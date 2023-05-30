@@ -53,6 +53,7 @@ class SimConfig():
         else:
             self._sim_params["enable_viewport"] = True
             enable_extension("omni.kit.viewport.bundle")
+        enable_extension("omni.isaac.wheeled_robots")
         enable_extension("omni.replicator.isaac")
 
         if self._sim_params["disable_contact_processing"]:

@@ -151,8 +151,8 @@ class JetbotTask(RLTask):
                 ang_vel=actions[i][1].item() 
             
             """ lin_vel=actions[i][0].item()
-            ang_vel=actions[i][1].item()
-             """
+            ang_vel=actions[i][1].item() """
+             
             controls[i] = self._diff_controller.forward([lin_vel,ang_vel])
 
         self._robots.set_joint_velocities(controls)

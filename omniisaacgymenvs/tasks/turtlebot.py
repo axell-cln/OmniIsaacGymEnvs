@@ -95,6 +95,10 @@ class TurtlebotTask(RLTask):
 
         self.positions, self.rotations = self._robots.get_world_poses()
         self.target_positions, _ = self._targets.get_world_poses()
+
+        self.positions[:,2]=0.0
+        self.target_positions[:,2]=0.0
+
         yaws = []
         for rot in self.rotations:
             yaws.append(quat_to_euler_angles(rot)[2])
@@ -107,6 +111,7 @@ class TurtlebotTask(RLTask):
         self.headings = torch.where(self.headings < -math.pi, self.headings + 2 * math.pi, self.headings)
 
         self.goal_distances = torch.linalg.norm(self.positions - self.target_positions, dim=1).to(self._device)
+        
 
         to_target = self.target_positions - self.positions
         to_target[:, 2] = 0.0
@@ -135,12 +140,27 @@ class TurtlebotTask(RLTask):
 
         controls = torch.zeros((self._num_envs, 4))
 
+         
+        
         for i in range(self._num_envs):
-            lin_vel=actions[i][0].item()
-            ang_vel=actions[i][1].item()
+
+            #for rl_games librairy player
+            if(actions.size()==torch.Size([2])):
+                lin_vel=actions[0].item()
+                ang_vel=actions[1].item()
+
+            if(actions.size()==torch.Size([1,2])):
+                lin_vel=actions[i][0].item()
+                ang_vel=actions[i][1].item() 
+                
+            #lin_vel=actions[i][0].item()
+            #ang_vel=actions[i][1].item()
             controls[i][:2] = torch.tensor([1.0,1.0])
             controls[i][2:] = self._diff_controller.forward([lin_vel,ang_vel])
 
+
+        
+            
         self._robots.set_joint_velocities(controls)
        
 
@@ -201,7 +221,7 @@ class TurtlebotTask(RLTask):
         rewards = torch.zeros_like(self.rew_buf)
 
         self.prev_goal_distance = self.goal_distances
-        self.goal_reached = torch.where(self.goal_distances < 0.1, 1, 0).to(self._device)
+        self.goal_reached = torch.where(self.goal_distances < 0.15, 1, 0).to(self._device)
 
         self.prev_heading = self.headings
 

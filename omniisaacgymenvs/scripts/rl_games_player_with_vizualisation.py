@@ -56,6 +56,7 @@ class RLGTrainer():
             while not is_done:
                 print("obs:", obs)
                 action = agent.get_action(obs['obs'], is_deterministic=True)
+                print("obs['obs']",obs['obs'])
                 print("action: ",action)
                 obs, reward, done, info = env.step(action)
                 print(f'Step {num_steps}: obs={obs["obs"]}, rews={reward}, dones={done}, info={info} \n')

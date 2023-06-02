@@ -37,7 +37,7 @@ from omniisaacgymenvs.envs.vec_env_rlgames import VecEnvRLGames
 import hydra
 from omegaconf import DictConfig
 
-from rl_games.common import env_configurations, vecenv
+from rl_games.common import env_configurations, vecenv, a2c_common
 from rl_games.torch_runner import Runner
 
 import datetime
@@ -48,7 +48,7 @@ class RLGTrainer():
     def __init__(self, cfg, cfg_dict):
         self.cfg = cfg
         self.cfg_dict = cfg_dict
-
+        #self.cfg.train.params.config.name = "128x128/"+self.cfg.train.params.config.name 
     def launch_rlg_hydra(self, env):
         # `create_rlgpu_env` is environment construction function which is passed to RL Games and called internally.
         # We use the helper function here to specify the environment config.
@@ -70,6 +70,7 @@ class RLGTrainer():
         runner.load(self.rlg_config_dict)
         runner.reset()
 
+        print(f' Experiment name: {self.cfg.train.params.config.name}')
         # dump config dict
         experiment_dir = os.path.join('runs', self.cfg.train.params.config.name)
         os.makedirs(experiment_dir, exist_ok=True)

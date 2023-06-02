@@ -24,7 +24,7 @@ sim:
   enable_scene_query_support: True
   disable_contact_processing: False
 
-   # set to True if you use camera sensors in the environment
+  # set to True if you use camera sensors in the environment
   enable_cameras: False
 
   default_physics_material:

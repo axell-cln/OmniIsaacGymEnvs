@@ -153,8 +153,8 @@ class TurtlebotTask(RLTask):
                 lin_vel=actions[i][0].item()
                 ang_vel=actions[i][1].item() 
                 
-            #lin_vel=actions[i][0].item()
-            #ang_vel=actions[i][1].item()
+            """ lin_vel=actions[i][0].item()
+            ang_vel=actions[i][1].item() """
             controls[i][:2] = torch.tensor([1.0,1.0])
             controls[i][2:] = self._diff_controller.forward([lin_vel,ang_vel])
 

@@ -6,7 +6,9 @@ import pandas as pd
 from rl_games.algos_torch.players import BasicPpoPlayerContinuous, BasicPpoPlayerDiscrete
 
 
-config_name = "/home/axelcoulon/projects/OmniIsaacGymEnvs/omniisaacgymenvs/cfg/train/JetbotPPO.yaml"
+config_name = "/home/axelcoulon/projects/OmniIsaacGymEnvs/omniisaacgymenvs/cfg/train/TurtlebotPPO.yaml"
+policy_path="/home/axelcoulon/projects/OmniIsaacGymEnvs/runs/Turtlebot/nn/Turtlebot.pth"
+
 
 with open(config_name, 'r') as stream:
     cfg = yaml.safe_load(stream)
@@ -17,7 +19,7 @@ act_space = spaces.Box(low=np.array([0.0, -1.0]), high=np.array([1.0, 1.0]), dty
 print()
 
 player = BasicPpoPlayerContinuous(cfg, observation_space, act_space, clip_actions=True, deterministic=True)
-player.restore("/home/axelcoulon/projects/OmniIsaacGymEnvs/runs/Jetbot/save_64_64/nn/Jetbot.pth")
+player.restore(policy_path)
 
 # Chemin vers le fichier Excel
 chemin_fichier = "/home/axelcoulon/projects/OmniIsaacGymEnvs/player_observations.xlsx"

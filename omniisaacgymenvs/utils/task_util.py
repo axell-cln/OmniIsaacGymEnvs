@@ -47,6 +47,8 @@ def initialize_task(config, env, init_sim=True):
     from omniisaacgymenvs.tasks.turtlebot import TurtlebotTask
     from omniisaacgymenvs.tasks.turtlebot3 import Turtlebot3Task
     from omniisaacgymenvs.tasks.jetbot import JetbotTask
+    from omniisaacgymenvs.tasks.heron import HeronTask
+    from omniisaacgymenvs.tasks.buoyancy import BuoyancyTask
 
     # Mappings from strings to environments
     task_map = {
@@ -68,6 +70,8 @@ def initialize_task(config, env, init_sim=True):
         "Turtlebot": TurtlebotTask,
         "Turtlebot3": Turtlebot3Task,
         "Jetbot": JetbotTask,
+        "Heron": HeronTask,
+        "Buoyancy": BuoyancyTask,
     }
 
     cfg = sim_config.config

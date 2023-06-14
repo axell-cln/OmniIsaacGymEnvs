@@ -1,11 +1,13 @@
-import numpy as np
-import math
+import torch
 
 class BuoyantObject:
     def __init__(self):
 
-        self.gravity= -9.81
-        self.mass = 5.0
-        self.archimedes = - self.gravity * self.mass 
+        return
+         
+    def compute_archimedes_simple(self, mass, gravity):
 
+        archimedes=torch.zeros(3)
+        archimedes[2] = - gravity * mass
+        return archimedes
         

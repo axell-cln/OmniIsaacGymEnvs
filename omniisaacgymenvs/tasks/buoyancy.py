@@ -7,6 +7,7 @@ from omni.isaac.core.objects import DynamicCuboid
 from omni.isaac.core.prims import RigidPrimView
 from omni.isaac.core.utils.prims import get_prim_at_path
 from omniisaacgymenvs.envs.buoyancy_physics import BuoyantObject
+from omni.isaac.core.utils.stage import add_reference_to_stage
 
 import omni
 from omni.physx.scripts import utils
@@ -35,6 +36,11 @@ class BuoyancyTask(RLTask):
         self._max_episode_length = self._task_cfg["env"]["episodeLength_s"]
 
         self.dt = self._task_cfg["sim"]["dt"]
+
+        #boxes physics
+        self.gravity=self._task_cfg["sim"]["gravity"][2]
+        self.mass=self._task_cfg["sim"]["mass"]
+        self.density=self._task_cfg["sim"]["density"]
 
         self._num_observations = 7
         self._num_actions = 1
@@ -66,6 +72,13 @@ class BuoyancyTask(RLTask):
 
     def get_target(self):
     
+
+        """ box_usd_path="/home/axelcoulon/projects/assets/box.usd"
+        box_prim_path=self.default_zero_env_path + "/box"
+        add_reference_to_stage(prim_path=box_prim_path, usd_path=box_usd_path) """
+
+        ############# this script below is provided in case you need to have a box.usd 
+
         box = DynamicCuboid(
             prim_path=self.default_zero_env_path + "/box", 
             translation=self._box_position, 
@@ -82,11 +95,13 @@ class BuoyancyTask(RLTask):
         # If a tighter collision approximation is desired use convexDecomposition instead of convexHull
         utils.setRigidBody(cube_prim, "convexHull", False)
         mass_api = UsdPhysics.MassAPI.Apply(cube_prim)
-        mass_api.CreateMassAttr(5)
+        mass_api.CreateMassAttr(self.mass)
         ### Alternatively set the density
-        mass_api.CreateDensityAttr(800)
+        mass_api.CreateDensityAttr(self.density)
         # Same with COM
         mass_api.CreateCenterOfMassAttr(Gf.Vec3f(0, 0, 0))
+        #omni.usd.get_context().save_as_stage("/home/axelcoulon/projects/assets/box_saved.usd", None) 
+
 
     def get_observations(self) -> dict:
 
@@ -113,9 +128,9 @@ class BuoyancyTask(RLTask):
 
         actions = actions.clone().to(self._device)
 
-        forces=torch.tensor([0.0,0.0, 9.81*5.0])
+        archimedes=self.buoyancy_physics.compute_archimedes_simple(mass=self.mass, gravity=self.gravity)
         
-        self._boxes.apply_forces_and_torques_at_pos(forces)
+        self._boxes.apply_forces_and_torques_at_pos(archimedes)
         
 
     def post_reset(self):

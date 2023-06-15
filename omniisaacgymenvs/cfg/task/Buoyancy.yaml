@@ -14,8 +14,10 @@ sim:
   dt: 0.01       #0.00833  #1/120s
   use_gpu_pipeline: ${eq:${...pipeline},"gpu"}
   gravity: [0.0, 0.0, -9.81]
-  mass: 5.0
-  density: 800.0
+  material_density: 500.0
+  box_width: 0.40
+  box_large: 0.50
+  box_high: 0.1
   add_ground_plane: True
   add_distant_light: True
   use_flatcache: True

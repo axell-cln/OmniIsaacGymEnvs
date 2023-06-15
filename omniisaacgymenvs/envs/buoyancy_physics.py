@@ -1,4 +1,5 @@
 import torch
+import math
 
 class BuoyantObject:
     def __init__(self):
@@ -11,3 +12,27 @@ class BuoyantObject:
         archimedes[2] = - gravity * mass
         return archimedes
         
+    def compute_archimedes(self, density_water, submerged_volume, gravity):
+
+        archimedes=torch.zeros(3)
+        archimedes[2] = density_water * gravity * submerged_volume
+        return archimedes
+    
+    def compute_drag_underwater(self, z_velocity):
+        
+        coeff=10.0
+        drag=torch.zeros(3)
+        drag[2]=coeff*z_velocity*z_velocity
+        if z_velocity<0:
+            return drag
+        else:
+            return -drag
+        
+    def compute_thrusters_force(self):
+        
+        thrusters=torch.zeros(6)
+        thrusters[1]=50.0
+        thrusters[4]=50.0
+
+        return thrusters
+

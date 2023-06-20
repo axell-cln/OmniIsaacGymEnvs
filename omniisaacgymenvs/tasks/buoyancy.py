@@ -145,7 +145,8 @@ class BuoyancyTask(RLTask):
         box_pos, _= self._boxes.get_world_poses(clone=False)
         box_velocities=self._boxes.get_velocities(clone=False)
         archimedes=torch.zeros((self._num_envs, 3), device=self._device, dtype=torch.float32)
-        drag=torch.zeros((self._num_envs, 3), device=self._device, dtype=torch.float32)
+        drag_z=torch.zeros((self._num_envs, 3), device=self._device, dtype=torch.float32)
+        drag_y=torch.zeros((self._num_envs, 3), device=self._device, dtype=torch.float32)
         thrusters=torch.zeros((self._num_envs, 6), device=self._device, dtype=torch.float32)
 
         for i in range(self._num_envs):
@@ -157,20 +158,22 @@ class BuoyancyTask(RLTask):
                 submerged_volume=torch.clamp(submerged_volume,0,self.box_volume).item()
                 #print("submerged_volume",submerged_volume)
                 archimedes[i,:]=self.buoyancy_physics.compute_archimedes(water_density, submerged_volume, -self.gravity)
-                drag[i,:]=self.buoyancy_physics.compute_drag_underwater(box_velocities[i,2])
+                drag_z[i,:]=self.buoyancy_physics.compute_drag_archimedes_underwater(box_velocities[i,2])
                 thrusters[i,:]=self.buoyancy_physics.compute_thrusters_force()
+                drag_y[i,:]=self.buoyancy_physics.compute_drag_thrusters(box_velocities[i,1])
             
             else:
                 archimedes[i,:]=self.buoyancy_physics.compute_archimedes(0.0,0.0,0.0)
-                drag[i,:]=0.0
+                drag_z[i,:]=0.0
+                drag_y[i,:]=0.0
                 thrusters[i,:]=0.0
             
         #thrusters[:,:]=self.buoyancy_physics.compute_thrusters_force()
         
         #print("archimedes first box: ",archimedes[0,:])
-        #print("drag first box: ", drag)
+        #print("drag_z first box: ", drag_z)
 
-        forces= archimedes + drag
+        forces= archimedes + drag_z + drag_y
         #print("forces: ", forces)
         #print("thrusters: ", thrusters)clea
 

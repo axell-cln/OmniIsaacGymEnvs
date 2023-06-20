@@ -54,7 +54,7 @@ class BuoyancyTask(RLTask):
         self._num_observations = 7
         self._num_actions = 1
 
-        self._box_position = torch.tensor([0, 0, 1.0])
+        self._box_position = torch.tensor([0, 0, 0.025])
 
         RLTask.__init__(self, name=name, env=env)
 
@@ -71,8 +71,8 @@ class BuoyancyTask(RLTask):
         self.get_buoyancy()
         RLTask.set_up_scene(self, scene)
         self._boxes = RigidPrimView(prim_paths_expr="/World/envs/.*/box/body", name="box_view", reset_xform_properties=False)
-        self._thrusters_left= RigidPrimView(prim_paths_expr="/World/envs/.*/box/thruster_0", name="left_thruster_view", reset_xform_properties=False)
-        self._thrusters_right= RigidPrimView(prim_paths_expr="/World/envs/.*/box/thruster_1", name="right_thruster_view", reset_xform_properties=False)
+        self._thrusters_left= RigidPrimView(prim_paths_expr="/World/envs/.*/box/left_thruster", name="left_thruster_view", reset_xform_properties=False)
+        self._thrusters_right= RigidPrimView(prim_paths_expr="/World/envs/.*/box/right_thruster", name="right_thruster_view", reset_xform_properties=False)
         scene.add(self._boxes)
         scene.add(self._thrusters_left)
         scene.add(self._thrusters_right)
@@ -164,19 +164,21 @@ class BuoyancyTask(RLTask):
                 archimedes[i,:]=self.buoyancy_physics.compute_archimedes(0.0,0.0,0.0)
                 drag[i,:]=0.0
                 thrusters[i,:]=0.0
+            
+        #thrusters[:,:]=self.buoyancy_physics.compute_thrusters_force()
         
         #print("archimedes first box: ",archimedes[0,:])
         #print("drag first box: ", drag)
 
         forces= archimedes + drag
         #print("forces: ", forces)
-        #print("thrusters: ", thrusters)
+        #print("thrusters: ", thrusters)clea
 
         self._boxes.apply_forces_and_torques_at_pos(forces,indices=indices)
         self._thrusters_left.apply_forces_and_torques_at_pos(thrusters[:,:3],indices=indices)
         self._thrusters_right.apply_forces_and_torques_at_pos(thrusters[:,3:],indices=indices)
 
-        print(thrusters[:,3:])
+        print(thrusters[0,:])
         
 
     def post_reset(self):
@@ -217,5 +219,5 @@ class BuoyancyTask(RLTask):
         #no resets for now
 
         """Flags the environnments in which the episode should end."""
-        resets = torch.where(self.progress_buf >= self._max_episode_length - 1, 1.0, self.reset_buf.double())
-        self.reset_buf[:] = resets
+        #resets = torch.where(self.progress_buf >= self._max_episode_length - 1, 1.0, self.reset_buf.double())
+        #self.reset_buf[:] = resets

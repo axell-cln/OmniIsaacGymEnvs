@@ -31,8 +31,8 @@ class BuoyantObject:
     def compute_thrusters_force(self):
         
         thrusters=torch.zeros(6)
-        thrusters[1]=50.0
-        thrusters[4]=50.0
+        thrusters[1]=-5.0
+        thrusters[4]=-5.0
 
         return thrusters
 

@@ -56,12 +56,18 @@ class BuoyancyTask(RLTask):
 
         self._box_position = torch.tensor([0, 0, 0.025])
 
+        self.stop_boat=0
+
         RLTask.__init__(self, name=name, env=env)
 
         self.target_positions = torch.zeros((self._num_envs, 3), device=self._device, dtype=torch.float32)
         self.target_positions[:, 2] = 1
 
         self.all_indices = torch.arange(self._num_envs, dtype=torch.int32, device=self._device)
+
+        self.archimedes=torch.zeros((self._num_envs, 3), device=self._device, dtype=torch.float32)
+        self.drag=torch.zeros((self._num_envs, 3), device=self._device, dtype=torch.float32)
+        self.thrusters=torch.zeros((self._num_envs, 6), device=self._device, dtype=torch.float32)
 
         return
 
@@ -144,10 +150,7 @@ class BuoyancyTask(RLTask):
         indices = torch.arange(self._boxes.count, dtype=torch.int64, device=self._device)
         box_pos, _= self._boxes.get_world_poses(clone=False)
         box_velocities=self._boxes.get_velocities(clone=False)
-        archimedes=torch.zeros((self._num_envs, 3), device=self._device, dtype=torch.float32)
-        drag_z=torch.zeros((self._num_envs, 3), device=self._device, dtype=torch.float32)
-        drag_y=torch.zeros((self._num_envs, 3), device=self._device, dtype=torch.float32)
-        thrusters=torch.zeros((self._num_envs, 6), device=self._device, dtype=torch.float32)
+        
 
         for i in range(self._num_envs):
             if box_pos[i,2] < self.half_box_size:
@@ -157,31 +160,34 @@ class BuoyancyTask(RLTask):
                 submerged_volume= high_submerged * self.box_width * self.box_large
                 submerged_volume=torch.clamp(submerged_volume,0,self.box_volume).item()
                 #print("submerged_volume",submerged_volume)
-                archimedes[i,:]=self.buoyancy_physics.compute_archimedes(water_density, submerged_volume, -self.gravity)
-                drag_z[i,:]=self.buoyancy_physics.compute_drag_archimedes_underwater(box_velocities[i,2])
-                thrusters[i,:]=self.buoyancy_physics.compute_thrusters_force()
-                drag_y[i,:]=self.buoyancy_physics.compute_drag_thrusters(box_velocities[i,1])
+                self.archimedes[i,:]=self.buoyancy_physics.compute_archimedes(water_density, submerged_volume, -self.gravity)
+                self.thrusters[i,:]=self.buoyancy_physics.compute_thrusters_force()
+                self.drag[i,:]=self.buoyancy_physics.compute_drag(box_velocities[i,:])
+                
+                #stop the motor at a point to see if the boat balance back
+                if self.stop_boat > 2000:
+                    self.thrusters[i,:]=0.0
+                self.stop_boat+=1
             
             else:
-                archimedes[i,:]=self.buoyancy_physics.compute_archimedes(0.0,0.0,0.0)
-                drag_z[i,:]=0.0
-                drag_y[i,:]=0.0
-                thrusters[i,:]=0.0
+                self.archimedes[i,:]=self.buoyancy_physics.compute_archimedes(0.0,0.0,0.0)
+                self.drag[i,:]=0.0
+                self.thrusters[i,:]=0.0
             
         #thrusters[:,:]=self.buoyancy_physics.compute_thrusters_force()
         
         #print("archimedes first box: ",archimedes[0,:])
-        #print("drag_z first box: ", drag_z)
+        print("drag first box: ", self.drag[0,:])
 
-        forces= archimedes + drag_z + drag_y
+        forces= self.archimedes + self.drag
         #print("forces: ", forces)
         #print("thrusters: ", thrusters)clea
 
         self._boxes.apply_forces_and_torques_at_pos(forces,indices=indices)
-        self._thrusters_left.apply_forces_and_torques_at_pos(thrusters[:,:3],indices=indices)
-        self._thrusters_right.apply_forces_and_torques_at_pos(thrusters[:,3:],indices=indices)
+        self._thrusters_left.apply_forces_and_torques_at_pos(self.thrusters[:,:3],indices=indices)
+        self._thrusters_right.apply_forces_and_torques_at_pos(self.thrusters[:,3:],indices=indices)
 
-        print(thrusters[0,:])
+        #print(thrusters[0,:])
         
 
     def post_reset(self):

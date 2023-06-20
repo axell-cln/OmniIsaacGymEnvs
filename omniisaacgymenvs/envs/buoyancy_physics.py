@@ -18,33 +18,40 @@ class BuoyantObject:
         archimedes[2] = density_water * gravity * submerged_volume
         return archimedes
     
-    def compute_drag_archimedes_underwater(self, z_velocity):
-        
-        coeff=10.0
-        drag=torch.zeros(3)
-        drag[2]=coeff*z_velocity*z_velocity
-        if z_velocity<0:
-            return drag
-        else:
-            return -drag
         
     def compute_thrusters_force(self):
         
         thrusters=torch.zeros(6)
-        thrusters[1]=5.0
-        thrusters[4]=5.0
+        thrusters[1]=-5.0
+        thrusters[4]=-5.0
 
         return thrusters
-    
-    def compute_drag_thrusters(self, y_velocity):
+        
+        
+    def compute_drag(self, boat_velocities):
 
-        coeff=1.0
+        x_velocity=boat_velocities[0].item()
+        y_velocity=boat_velocities[1].item()
+        z_velocity=boat_velocities[2].item()
+
+        norme = math.sqrt(x_velocity**2 + y_velocity**2 + z_velocity**2)
+
+        x_unit= x_velocity / norme
+        y_unit = y_velocity / norme
+        z_unit = z_velocity / norme
+
+        coeff_drag_x = 1.0
+        coeff_drag_y = 1.0
+        coeff_drag_z = 10.0
+
         drag=torch.zeros(3)
-        drag[1]=coeff*y_velocity*y_velocity
-        if y_velocity<0:
-            return drag
-        else:
-            return -drag
+        
+        drag[0]=-x_unit*coeff_drag_x*x_velocity*x_velocity
+        drag[1]=-y_unit*coeff_drag_y*y_velocity*y_velocity
+        drag[2]=-z_unit*coeff_drag_z*z_velocity*z_velocity
+
+        return drag
+
     
 
 

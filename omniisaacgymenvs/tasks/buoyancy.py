@@ -177,7 +177,7 @@ class BuoyancyTask(RLTask):
         #thrusters[:,:]=self.buoyancy_physics.compute_thrusters_force()
         
         #print("archimedes first box: ",archimedes[0,:])
-        print("drag first box: ", self.drag[0,:])
+        #print("drag first box: ", self.drag[0,:])vbv
 
         forces= self.archimedes + self.drag
         #print("forces: ", forces)

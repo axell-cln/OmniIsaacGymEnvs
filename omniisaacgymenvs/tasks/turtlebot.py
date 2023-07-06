@@ -144,17 +144,17 @@ class TurtlebotTask(RLTask):
         
         for i in range(self._num_envs):
 
-            #for rl_games librairy player
+            """ #for rl_games librairy player
             if(actions.size()==torch.Size([2])):
                 lin_vel=actions[0].item()
                 ang_vel=actions[1].item()
 
             if(actions.size()==torch.Size([1,2])):
                 lin_vel=actions[i][0].item()
-                ang_vel=actions[i][1].item() 
+                ang_vel=actions[i][1].item()  """
                 
-            """ lin_vel=actions[i][0].item()
-            ang_vel=actions[i][1].item() """
+            lin_vel=actions[i][0].item()
+            ang_vel=actions[i][1].item()
             controls[i][:2] = torch.tensor([1.0,1.0])
             controls[i][2:] = self._diff_controller.forward([lin_vel,ang_vel])
 

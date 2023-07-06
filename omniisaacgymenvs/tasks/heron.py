@@ -1,44 +1,21 @@
-# Copyright (c) 2018-2022, NVIDIA Corporation
-# All rights reserved.
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-# 1. Redistributions of source code must retain the above copyright notice, this
-#    list of conditions and the following disclaimer.
-#
-# 2. Redistributions in binary form must reproduce the above copyright notice,
-#    this list of conditions and the following disclaimer in the documentation
-#    and/or other materials provided with the distribution.
-#
-# 3. Neither the name of the copyright holder nor the names of its
-#    contributors may be used to endorse or promote products derived from
-#    this software without specific prior written permission.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
-# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-
 from omniisaacgymenvs.tasks.base.rl_task import RLTask
-from omniisaacgymenvs.robots.articulations.heron import Heron
-from omniisaacgymenvs.robots.articulations.views.heron_view import HeronView
-
-from omni.isaac.core.utils.torch.rotations import *
-from omni.isaac.core.objects import DynamicSphere
+from omniisaacgymenvs.robots.controllers.differential_controller import DifferentialController
+from omni.isaac.core.articulations import ArticulationView
+from omni.isaac.core.prims import GeometryPrimView
+from omni.isaac.core.utils.rotations import quat_to_euler_angles
+from omni.isaac.core.objects import VisualCuboid
+from omni.isaac.wheeled_robots.robots import WheeledRobot
+from omni.isaac.core.utils.nucleus import get_assets_root_path
 from omni.isaac.core.prims import RigidPrimView
-from omni.isaac.core.utils.prims import get_prim_at_path
+from omniisaacgymenvs.envs.buoyancy_physics import BuoyantObject
+from omni.isaac.core.utils.stage import add_reference_to_stage
+
+
 
 import numpy as np
 import torch
 import math
+from gym import spaces
 
 
 class HeronTask(RLTask):
@@ -49,74 +26,100 @@ class HeronTask(RLTask):
         env,
         offset=None
     ) -> None:
+
         self._sim_config = sim_config
         self._cfg = sim_config.config
         self._task_cfg = sim_config.task_config
 
-        self._num_envs = self._task_cfg["env"]["numEnvs"]
+        self._num_envs = self._task_cfg["env"]["numEnvs"] 
         self._env_spacing = self._task_cfg["env"]["envSpacing"]
-        self._max_episode_length = self._task_cfg["env"]["maxEpisodeLength"]
 
-        self.thrust_limit = 2000
-        self.thrust_lateral_component = 0.2
+        self._reset_dist = self._task_cfg["env"]["resetDist"]
+        self._max_episode_length = self._task_cfg["env"]["episodeLength_s"]
+        
 
         self.dt = self._task_cfg["sim"]["dt"]
 
-        self._num_observations = 4 
+        #boxes physics
+        self.gravity=self._task_cfg["sim"]["gravity"][2]
+        
+        self.box_density=self._task_cfg["sim"]["material_density"]
+        
+        self.box_width=self._task_cfg["sim"]["box_width"]
+        self.box_large=self._task_cfg["sim"]["box_large"]
+        self.box_high=self._task_cfg["sim"]["box_high"]
+
+        self.box_volume=self.box_width*self.box_large*self.box_high
+        self.box_mass=self.box_volume*self.box_density
+
+        self.half_box_size=self.box_high/2
+
+        self._num_observations =  2 
         self._num_actions = 2
 
-        self._boat_position = torch.tensor([0, 0, 0.05])
-        self._goal_position = torch.tensor([2.0, 2.0, 0.0])
+        self.stop_boat=0
 
-        RLTask.__init__(self, name=name, env=env)
+        self._box_position = torch.tensor([0, 0, 0.025])
 
-        self.force_indices = torch.tensor([0, 2], device=self._device)
-        self.spinning_indices = torch.tensor([0, 2], device=self._device)
+        RLTask.__init__(self, name, env)
 
-        self.target_positions = torch.zeros((self._num_envs, 3), device=self._device, dtype=torch.float32)
-     
-     
-        """ self.target_positions[:, 0] = 2.0
-        self.target_positions[:, 1] = 2.0
-        self.target_positions[:, 2] = 0.0 """
-        
-        self.all_indices = torch.arange(self._num_envs, dtype=torch.int32, device=self._device)
+        self.action_space = spaces.Box(low=np.array([0.0, 0.0]), high=np.array([5.0, 5.0]), dtype=np.float32)
+
+        # init tensors that need to be set to correct device
+        self.prev_goal_distance = torch.zeros(self._num_envs).to(self._device)
+        self.prev_heading = torch.zeros(self._num_envs).to(self._device)
+        self.target_position = torch.tensor([0.0, 0.0, 0.0]).to(self._device)
+
+        #forces
+        self.archimedes=torch.zeros((self._num_envs, 3), device=self._device, dtype=torch.float32)
+        self.drag=torch.zeros((self._num_envs, 3), device=self._device, dtype=torch.float32)
+        self.thrusters=torch.zeros((self._num_envs, 6), device=self._device, dtype=torch.float32)
+
 
         return
 
     def set_up_scene(self, scene) -> None:
-        self.get_heron()
-        self.get_target()
-        RLTask.set_up_scene(self, scene)
-        self._herons = HeronView(prim_paths_expr="/World/envs/.*/heron", name="heron_view")
-        self._targets = RigidPrimView(prim_paths_expr="/World/envs/.*/ball", name="targets_view", reset_xform_properties=False)
-        scene.add(self._herons)
-        scene.add(self._targets)
+
+        """Add prims to the scene and add views for interracting with them. Views are useful to interract with multiple prims at once."""
         
+        self.get_heron()
+        self.get_buoyancy()
+        self.get_target(scene)
+        RLTask.set_up_scene(self, scene)
+        self._boxes = RigidPrimView(prim_paths_expr="/World/envs/.*/box/body", name="box_view")
+        self._thrusters_left= RigidPrimView(prim_paths_expr="/World/envs/.*/box/left_thruster", name="left_thruster_view")
+        self._thrusters_right= RigidPrimView(prim_paths_expr="/World/envs/.*/box/right_thruster", name="right_thruster_view")
+        self._targets=GeometryPrimView(prim_paths_expr="/World/envs/.*/target_cube", name="target_view")
+        scene.add(self._boxes)
+        scene.add(self._thrusters_left)
+        scene.add(self._thrusters_right)
 
-    def get_heron(self):
-        heron = Heron(prim_path=self.default_zero_env_path + "/heron", name="heron", translation=self._boat_position)
-        self._sim_config.apply_articulation_settings("heron", get_prim_at_path(heron.prim_path), self._sim_config.parse_actor_config("heron"))
+    def get_target(self, scene):
 
-    def get_target(self):
-        radius = 0.1
-        color = torch.tensor([1, 0, 0])
-        ball = DynamicSphere(
-            prim_path=self.default_zero_env_path + "/ball", 
-            translation=self._goal_position, 
-            name="target_0",
-            radius=radius,
-            color=color,
+        #create target and import
+        scene.add(
+            VisualCuboid(
+                prim_path=self.default_zero_env_path + "/target_cube",
+                name="target_cube",
+                position=self.target_position,
+                size=0.1,
+                color=np.array([1.0, 0, 0]),
+            )
         )
-        self._sim_config.apply_articulation_settings("ball", get_prim_at_path(ball.prim_path), self._sim_config.parse_actor_config("ball"))
-        ball.set_collision_enabled(False)
 
+    def get_buoyancy(self):
+        self.buoyancy_physics=BuoyantObject()
+    
+    def get_heron(self):
+        box_usd_path="/home/axelcoulon/projects/assets/box_thrusters.usd"
+        box_prim_path=self.default_zero_env_path + "/box"
+        add_reference_to_stage(prim_path=box_prim_path, usd_path=box_usd_path, prim_type="Xform")
+       
+    
     def get_observations(self) -> dict:
 
-        self.positions, self.rotations = self._herons.get_world_poses()
+        self.positions, self.rotations = self._boxes.get_world_poses()
         self.target_positions, _ = self._targets.get_world_poses()
-
-        self.herons_velocities = self._herons.get_velocities(clone=False)
 
         self.positions[:,2]=0.0
         self.target_positions[:,2]=0.0
@@ -134,89 +137,79 @@ class HeronTask(RLTask):
 
         self.goal_distances = torch.linalg.norm(self.positions - self.target_positions, dim=1).to(self._device)
         
-
         to_target = self.target_positions - self.positions
         to_target[:, 2] = 0.0
 
         self.prev_potentials[:] = self.potentials.clone()
         self.potentials[:] = -torch.norm(to_target, p=2, dim=-1) / self.dt
 
-        obs = torch.hstack((self.headings.unsqueeze(1), self.goal_distances.unsqueeze(1), self.herons_velocities.unsqueeze(1)))
+        obs = torch.hstack((self.headings.unsqueeze(1), self.goal_distances.unsqueeze(1)))
         self.obs_buf[:] = obs
 
         observations = {
-            self._herons.name: {
+            self._boxes.name: {
                 "obs_buf": self.obs_buf
             }
         }
         return observations
 
     def pre_physics_step(self, actions) -> None:
+
+        """Perform actions to move the robot."""
+
         if not self._env._world.is_playing():
             return
-
+        
         reset_env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
         if len(reset_env_ids) > 0:
             self.reset_idx(reset_env_ids)
 
-        set_target_ids = (self.progress_buf % 500 == 0).nonzero(as_tuple=False).squeeze(-1)
-        if len(set_target_ids) > 0:
-            self.set_targets(set_target_ids)
+        actions = actions.to(self._device)
+        indices = torch.arange(self._boxes.count, dtype=torch.int64, device=self._device)
+        box_pos, _= self._boxes.get_world_poses(clone=False)
+        box_velocities=self._boxes.get_velocities(clone=False)
 
-        actions = actions.clone().to(self._device)
+
+        for i in range(self._num_envs):
+            if box_pos[i,2] - self.half_box_size < 0.0:
+                #body underwater
+                water_density=1000 # kg/m^3
+                high_submerged=self.half_box_size-box_pos[i,2]
+                submerged_volume= high_submerged * self.box_width * self.box_large
+                submerged_volume=torch.clamp(submerged_volume,0,self.box_volume).item()
+                #print("submerged_volume",submerged_volume)
+                #self.thrusters[i,:]=self.buoyancy_physics.rl_compute_thrusters_force(actions[i][0].item(), actions[i][1].item())
+                self.archimedes[i,:]=self.buoyancy_physics.compute_archimedes(water_density, submerged_volume, -self.gravity)
+                #self.drag[i,:]=self.buoyancy_physics.compute_drag(box_velocities[i,:])
+                
+                """ #stop the motor at a point to see if the boat balance back
+                if self.stop_boat > 2000:
+                    self.thrusters[i,:]=0.0
+                self.stop_boat+=1 """
+            
+            else:
+                self.archimedes[i,:]=self.buoyancy_physics.compute_archimedes(0.0,0.0,0.0)
+                self.drag[i,:]=0.0
+                self.thrusters[i,:]=0.0
+            
+            self.thrusters[i,:]=self.buoyancy_physics.rl_compute_thrusters_force(actions[i][0].item(), actions[i][1].item())
+            self.drag[i,:]=self.buoyancy_physics.compute_drag(box_velocities[i,:])
         
-
-        self.thrusts[:, 0] = 1.0
-        self.thrusts[:, 1] = 1.0
+        
+                
+        #self.thrusters[:,:]=self.buoyancy_physics.compute_thrusters_force()
     
-        # clear actions for reset envs
-        self.thrusts[reset_env_ids] = 0
-
-        # spin spinning rotors
-        self.dof_vel[:, self.spinning_indices[0]] = 50
-        self.dof_vel[:, self.spinning_indices[1]] = 50
-        self._herons.set_joint_velocities(self.dof_vel)
-
-        # apply actions
-        for i in range(2):
-            self._herons.thrusters[i].apply_forces(self.thrusts[:, i], indices=self.all_indices)
-
-    def post_reset(self):
-        """This is run when first starting the simulation before first episode."""
-      
-        # get some initial poses
-        self.initial_root_pos, self.initial_root_rot = self._herons.get_world_poses()
-        self.initial_target_pos, _ = self._targets.get_world_poses()
-
-        self.potentials = torch.tensor([-1000.0 / self.dt], dtype=torch.float32, device=self._device).repeat(self.num_envs)
-        self.prev_potentials = self.potentials.clone()
-
-        # randomize all envs
-        indices = torch.arange(self._herons.count, dtype=torch.int64, device=self._device)
-        self.reset_idx(indices)
-
-        #in case of randomizing
-        """ if self._dr_randomizer.randomize:
-            self._dr_randomizer.set_up_domain_randomization(self) """
-
-    def set_targets(self, env_ids):
-        num_sets = len(env_ids)
-        envs_long = env_ids.long()
-
-        target_pos=torch.zeros((num_sets, 3), device=self._device)
+        forces= self.archimedes + self.drag
         
-        for i in range(num_sets):
-            # randomize goal location in circle around robot
-            alpha = 2 * math.pi * np.random.rand()
-            r = 1.50 * math.sqrt(np.random.rand()) + 0.20
-            random_target_pos=torch.tensor([math.sin(alpha) * r, math.cos(alpha) * r, 0.025]).to(self._device)
-            target_pos[i,:] = self.initial_target_pos[i,:] + random_target_pos
+        self._boxes.apply_forces_and_torques_at_pos(forces,indices=indices)
+        self._thrusters_left.apply_forces_and_torques_at_pos(self.thrusters[:,:3],indices=indices, positions=torch.tensor([0.1, 0.25, -0.025]), is_global=False)
+        self._thrusters_right.apply_forces_and_torques_at_pos(self.thrusters[:,3:],indices=indices, positions=torch.tensor([-0.1, 0.25, -0.025]), is_global=False)
 
-        self._targets.set_world_poses(target_pos, indices=env_ids)
+       
+    
 
     def reset_idx(self, env_ids):
         """Resetting the environment at the beginning of episode."""
-        
         num_resets = len(env_ids)
 
         self.goal_reached = torch.zeros(self._num_envs, device=self._device)
@@ -225,15 +218,15 @@ class HeronTask(RLTask):
         root_pos, root_rot = self.initial_root_pos[env_ids], self.initial_root_rot[env_ids]
         root_vel = torch.zeros((num_resets, 6), device=self._device)
         
-        self._herons.set_world_poses(root_pos, root_rot, indices=env_ids)
-        self._herons.set_velocities(root_vel, indices=env_ids)
+        self._boxes.set_world_poses(root_pos, root_rot, indices=env_ids)
+        self._boxes.set_velocities(root_vel, indices=env_ids)
 
         target_pos=torch.zeros((num_resets, 3), device=self._device)
         
         for i in range(num_resets):
             # randomize goal location in circle around robot
             alpha = 2 * math.pi * np.random.rand()
-            r = 1.50 * math.sqrt(np.random.rand()) + 0.20
+            r = 3.50 * math.sqrt(np.random.rand()) + 0.20
             random_target_pos=torch.tensor([math.sin(alpha) * r, math.cos(alpha) * r, 0.025]).to(self._device)
             target_pos[i,:] = self.initial_target_pos[i,:] + random_target_pos
 
@@ -249,38 +242,45 @@ class HeronTask(RLTask):
         self.reset_buf[env_ids] = 0
         self.progress_buf[env_ids] = 0
 
-    def calculate_metrics(self) -> None:
+    def post_reset(self):
+        """This is run when first starting the simulation before first episode."""
+      
+        # get some initial poses
+        self.initial_root_pos, self.initial_root_rot = self._boxes.get_world_poses()
+        self.initial_target_pos, _ = self._targets.get_world_poses()
 
-        heron_positions = self.heron_pos - self._env_pos
-        root_quats = self.root_rot
-        root_angvels = self.root_velocities[:, 3:]
+        self.potentials = torch.tensor([-1000.0 / self.dt], dtype=torch.float32, device=self._device).repeat(self.num_envs)
+        self.prev_potentials = self.potentials.clone()
 
-        # distance to target
-        target_dist = torch.sqrt(torch.square(self.target_positions - heron_positions).sum(-1))
-        pos_reward = 1.0 / (1.0 + 2.5 * target_dist * target_dist)
-        self.target_dist = target_dist
-        self.heron_positions = heron_positions
+        # randomize all envs
+        indices = torch.arange(self._boxes.count, dtype=torch.int64, device=self._device)
+        self.reset_idx(indices)
 
-        # uprightness
-        ups = quat_axis(root_quats, 2)
+        #in case of randomizing
+        """ if self._dr_randomizer.randomize:
+            self._dr_randomizer.set_up_domain_randomization(self) """
         
-        tiltage = torch.abs(1 - ups[..., 2])
-        up_reward = 1.0 / (1.0 + 30 * tiltage * tiltage)
-  
-        # spinning
-        spinnage = torch.abs(root_angvels[..., 2])
-        spinnage_reward = 1.0 / (1.0 + 10 * spinnage * spinnage)
 
-        # combined reward
-        # uprightness and spinning only matter when close to the target
-        self.rew_buf[:] = pos_reward + pos_reward * (up_reward + spinnage_reward)
+    def calculate_metrics(self) -> None:
+        """Calculate rewards for the RL agent."""
+        rewards = torch.zeros_like(self.rew_buf)
+
+        self.prev_goal_distance = self.goal_distances
+        self.goal_reached = torch.where(self.goal_distances < 0.15, 1, 0).to(self._device)
+
+        self.prev_heading = self.headings
+
+        progress_reward = self.potentials - self.prev_potentials
+     
+        episode_end = torch.where(self.progress_buf >= self._max_episode_length - 1, 1.0, 0.0)
+      
+        rewards -= 10 * episode_end
+        rewards += 0.1 * progress_reward
+        rewards += 20 * self.goal_reached
+
+        self.rew_buf[:] = rewards
 
     def is_done(self) -> None:
-        # resets due to misbehavior
-        ones = torch.ones_like(self.reset_buf)
-        die = torch.zeros_like(self.reset_buf)
-        die = torch.where(self.target_dist > 20.0, ones, die)
-        die = torch.where(self.heron_positions[..., 2] < 0.5, ones, die)
-
-        # resets due to episode length
-        self.reset_buf[:] = torch.where(self.progress_buf >= self._max_episode_length - 1, ones, die)
+        """Flags the environnments in which the episode should end."""
+        resets = torch.where(self.progress_buf >= self._max_episode_length - 1, 1.0, self.reset_buf.double())
+        self.reset_buf[:] = resets

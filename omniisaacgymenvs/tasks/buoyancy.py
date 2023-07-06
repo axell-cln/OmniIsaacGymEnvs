@@ -54,9 +54,9 @@ class BuoyancyTask(RLTask):
         self._num_observations = 7
         self._num_actions = 1
 
-        self._box_position = torch.tensor([0, 0, 0.025])
+        self.water_density=1000 # kg/m^3
 
-        self.stop_boat=0
+        self._box_position = torch.tensor([0, 0, 0.025])
 
         RLTask.__init__(self, name=name, env=env)
 
@@ -68,6 +68,8 @@ class BuoyancyTask(RLTask):
         self.archimedes=torch.zeros((self._num_envs, 3), device=self._device, dtype=torch.float32)
         self.drag=torch.zeros((self._num_envs, 3), device=self._device, dtype=torch.float32)
         self.thrusters=torch.zeros((self._num_envs, 6), device=self._device, dtype=torch.float32)
+        self.high_submerged=torch.zeros((self._num_envs), device=self._device, dtype=torch.float32)
+        self.submerged_volume=torch.zeros((self._num_envs), device=self._device, dtype=torch.float32)
 
         return
 
@@ -87,7 +89,7 @@ class BuoyancyTask(RLTask):
 
     def get_buoyancy(self):
 
-        self.buoyancy_physics=BuoyantObject()
+        self.buoyancy_physics=BuoyantObject(self.num_envs)
 
     def get_target(self):
     
@@ -150,44 +152,21 @@ class BuoyancyTask(RLTask):
         indices = torch.arange(self._boxes.count, dtype=torch.int64, device=self._device)
         box_pos, _= self._boxes.get_world_poses(clone=False)
         box_velocities=self._boxes.get_velocities(clone=False)
-        
 
-        for i in range(self._num_envs):
-            if box_pos[i,2] < self.half_box_size:
-                #body underwater
-                water_density=1000 # kg/m^3
-                high_submerged=self.half_box_size-box_pos[i,2]
-                submerged_volume= high_submerged * self.box_width * self.box_large
-                submerged_volume=torch.clamp(submerged_volume,0,self.box_volume).item()
-                #print("submerged_volume",submerged_volume)
-                self.archimedes[i,:]=self.buoyancy_physics.compute_archimedes(water_density, submerged_volume, -self.gravity)
-                self.thrusters[i,:]=self.buoyancy_physics.compute_thrusters_force()
-                self.drag[i,:]=self.buoyancy_physics.compute_drag(box_velocities[i,:])
-                
-                #stop the motor at a point to see if the boat balance back
-                if self.stop_boat > 2000:
-                    self.thrusters[i,:]=0.0
-                self.stop_boat+=1
             
-            else:
-                self.archimedes[i,:]=self.buoyancy_physics.compute_archimedes(0.0,0.0,0.0)
-                self.drag[i,:]=0.0
-                self.thrusters[i,:]=0.0
+        #body underwater
+        self.high_submerged[:]=torch.clamp(self.half_box_size-box_pos[:,2], 0, self.box_high)
+        self.submerged_volume[:]= torch.clamp(self.high_submerged * self.box_width * self.box_large, 0, self.box_volume)
+        self.archimedes[:,:]=self.buoyancy_physics.compute_archimedes(self.water_density, self.submerged_volume, -self.gravity)
+        self.thrusters[:,:]=self.buoyancy_physics.compute_thrusters_force()
+        self.drag[:,:]=self.buoyancy_physics.compute_drag(box_velocities[:,:])
             
-        #thrusters[:,:]=self.buoyancy_physics.compute_thrusters_force()
-        
-        #print("archimedes first box: ",archimedes[0,:])
-        #print("drag first box: ", self.drag[0,:])vbv
-
+                    
         forces= self.archimedes + self.drag
-        #print("forces: ", forces)
-        #print("thrusters: ", thrusters)clea
 
         self._boxes.apply_forces_and_torques_at_pos(forces,indices=indices)
-        self._thrusters_left.apply_forces_and_torques_at_pos(self.thrusters[:,:3],indices=indices)
-        self._thrusters_right.apply_forces_and_torques_at_pos(self.thrusters[:,3:],indices=indices)
-
-        #print(thrusters[0,:])
+        self._thrusters_left.apply_forces_and_torques_at_pos(self.thrusters[:,:3],indices=indices, positions=torch.tensor([0.1, 0.25, -0.025]), is_global=False)
+        self._thrusters_right.apply_forces_and_torques_at_pos(self.thrusters[:,3:],indices=indices, positions=torch.tensor([-0.1, 0.25, -0.025]), is_global=False)
         
 
     def post_reset(self):
@@ -206,7 +185,7 @@ class BuoyancyTask(RLTask):
         # shift the target up so it visually aligns better
         box_pos = self.target_positions[envs_long] + self._env_pos[envs_long]
         
-        box_pos[:, 2] += 0.4
+        #box_pos[:, 2] += 0.4
         #box_pos[:, 2] = 0.05
 
         self._boxes.set_world_poses(box_pos[:, 0:3], self.initial_box_rot[envs_long].clone(), indices=env_ids)

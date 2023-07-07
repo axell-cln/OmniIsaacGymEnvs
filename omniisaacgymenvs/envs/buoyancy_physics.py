@@ -6,7 +6,7 @@ class BuoyantObject:
             self._num_envs = num_envs
     
             return
-         
+        
     def compute_archimedes_simple(self, mass, gravity):
 
         archimedes=torch.zeros(3)
@@ -23,7 +23,7 @@ class BuoyantObject:
     def compute_thrusters_force(self):
         
         thrusters=torch.zeros((self._num_envs, 6), dtype=torch.float32)
-        thrusters[:,1]=0.0
+        thrusters[:,1]=5.0
         thrusters[:,4]=-5.0
 
         return thrusters
@@ -44,21 +44,33 @@ class BuoyantObject:
         y_velocity=boat_velocities[:,1]
         z_velocity=boat_velocities[:,2]
 
-        norme = torch.sqrt(x_velocity**2 + y_velocity**2 + z_velocity**2)
+        x_rotation = boat_velocities[:,3]
+        y_rotation = boat_velocities[:,4]
+        z_rotation = boat_velocities[:,5]
 
-        x_unit= x_velocity / (norme + eps)
+        """ norme = torch.sqrt(x_velocity**2 + y_velocity**2 + z_velocity**2) """
+
+        """ x_unit= x_velocity / (norme + eps)
         y_unit = y_velocity / (norme + eps)
-        z_unit = z_velocity / (norme + eps)
+        z_unit = z_velocity / (norme + eps)  """
 
         coeff_drag_x = 3.0
         coeff_drag_y = 3.0
         coeff_drag_z = 10.0
 
-        drag=torch.zeros((self._num_envs, 3), dtype=torch.float32)
+        drag=torch.zeros((self._num_envs, 6), dtype=torch.float32)
         
-        drag[:,0]=-x_unit*coeff_drag_x*x_velocity*x_velocity
+        """ drag[:,0]=-x_unit*coeff_drag_x*x_velocity*x_velocity
         drag[:,1]=-y_unit*coeff_drag_y*y_velocity*y_velocity
-        drag[:,2]=-z_unit*coeff_drag_z*z_velocity*z_velocity
+        drag[:,2]=-z_unit*coeff_drag_z*z_velocity*z_velocity """
+
+        drag[:,0]=-coeff_drag_x*abs(x_velocity)*x_velocity
+        drag[:,1]=-coeff_drag_y*abs(y_velocity)*y_velocity
+        drag[:,2]=-coeff_drag_z*abs(z_velocity)*z_velocity
+
+        drag[:,3]=-coeff_drag_x*abs(x_rotation)*x_rotation
+        drag[:,4]=-coeff_drag_y*abs(y_rotation)*y_rotation
+        #drag[:,5]=-coeff_drag_z*abs(z_rotation)*z_rotation
 
         return drag
 

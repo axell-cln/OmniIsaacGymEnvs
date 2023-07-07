@@ -54,9 +54,14 @@ class BuoyancyTask(RLTask):
         self._num_observations = 7
         self._num_actions = 1
 
+        self.stop_boat = 0
+        
         self.water_density=1000 # kg/m^3
 
         self._box_position = torch.tensor([0, 0, 0.025])
+
+        self.left_thruster_position = torch.tensor([0.1, 0.25, -0.025])
+        self.right_thruster_position = torch.tensor([-0.1, 0.25, -0.025])
 
         RLTask.__init__(self, name=name, env=env)
 
@@ -66,7 +71,7 @@ class BuoyancyTask(RLTask):
         self.all_indices = torch.arange(self._num_envs, dtype=torch.int32, device=self._device)
 
         self.archimedes=torch.zeros((self._num_envs, 3), device=self._device, dtype=torch.float32)
-        self.drag=torch.zeros((self._num_envs, 3), device=self._device, dtype=torch.float32)
+        self.drag=torch.zeros((self._num_envs, 6), device=self._device, dtype=torch.float32)
         self.thrusters=torch.zeros((self._num_envs, 6), device=self._device, dtype=torch.float32)
         self.high_submerged=torch.zeros((self._num_envs), device=self._device, dtype=torch.float32)
         self.submerged_volume=torch.zeros((self._num_envs), device=self._device, dtype=torch.float32)
@@ -79,9 +84,11 @@ class BuoyancyTask(RLTask):
         self.get_buoyancy()
         RLTask.set_up_scene(self, scene)
         self._boxes = RigidPrimView(prim_paths_expr="/World/envs/.*/box/body", name="box_view", reset_xform_properties=False)
+        #self._drag_rigid_body= RigidPrimView(prim_paths_expr="/World/envs/.*/box/drag", name="box_drag_view", reset_xform_properties=False)
         self._thrusters_left= RigidPrimView(prim_paths_expr="/World/envs/.*/box/left_thruster", name="left_thruster_view", reset_xform_properties=False)
         self._thrusters_right= RigidPrimView(prim_paths_expr="/World/envs/.*/box/right_thruster", name="right_thruster_view", reset_xform_properties=False)
         scene.add(self._boxes)
+        #scene.add(self._drag_rigid_body)
         scene.add(self._thrusters_left)
         scene.add(self._thrusters_right)
         return
@@ -158,22 +165,48 @@ class BuoyancyTask(RLTask):
         self.high_submerged[:]=torch.clamp(self.half_box_size-box_pos[:,2], 0, self.box_high)
         self.submerged_volume[:]= torch.clamp(self.high_submerged * self.box_width * self.box_large, 0, self.box_volume)
         self.archimedes[:,:]=self.buoyancy_physics.compute_archimedes(self.water_density, self.submerged_volume, -self.gravity)
-        self.thrusters[:,:]=self.buoyancy_physics.compute_thrusters_force()
-        self.drag[:,:]=self.buoyancy_physics.compute_drag(box_velocities[:,:])
-            
-                    
-        forces= self.archimedes + self.drag
-
-        self._boxes.apply_forces_and_torques_at_pos(forces,indices=indices)
-        self._thrusters_left.apply_forces_and_torques_at_pos(self.thrusters[:,:3],indices=indices, positions=torch.tensor([0.1, 0.25, -0.025]), is_global=False)
-        self._thrusters_right.apply_forces_and_torques_at_pos(self.thrusters[:,3:],indices=indices, positions=torch.tensor([-0.1, 0.25, -0.025]), is_global=False)
         
+
+        ##some tests for the thrusters
+        if self.stop_boat < 1000 :
+            self.thrusters[:,1]=-5.0
+            self.thrusters[:,4]=0.0
+        
+        if self.stop_boat > 1000 and self.stop_boat < 2000 :
+            self.thrusters[:,1]=-10.0
+            self.thrusters[:,4]=-10.0
+        
+        if self.stop_boat > 2000 :
+            self.thrusters[:,1]=0.0
+            self.thrusters[:,4]=-5.0
+        
+        self.stop_boat+=1
+
+        print(self.stop_boat)
+
+        self.drag[:,:]=self.buoyancy_physics.compute_drag(box_velocities[:,:])
+                   
+        forces_applied_on_center= self.archimedes + self.drag[:,:3]
+        self._boxes.apply_forces_and_torques_at_pos(forces=forces_applied_on_center)
+        self._thrusters_left.apply_forces_and_torques_at_pos(self.thrusters[:,:3], positions=self.left_thruster_position, is_global=False)
+        self._thrusters_right.apply_forces_and_torques_at_pos(self.thrusters[:,3:], positions=self.right_thruster_position, is_global=False)
+
+        #print("drag:\t{:.2f}\t{:.2f}\t{:.2f}\t{:.2f}\t{:.2f}\t{:.2f}".format(self.drag[0,0],self.drag[0,1],self.drag[0,2],self.drag[0,3],self.drag[0,4],self.drag[0,5]))
+        #print(self._boxes.get_world_poses())
+
+
+    def propagate_forces(self):
+        # Apply forces
+        forces_applied_on_center= self.archimedes + self.drag[:,:3]
+        self._boxes.apply_forces_and_torques_at_pos(forces=forces_applied_on_center)
+        self._thrusters_left.apply_forces_and_torques_at_pos(self.thrusters[:,:3], positions=self.left_thruster_position, is_global=False)
+        self._thrusters_right.apply_forces_and_torques_at_pos(self.thrusters[:,3:], positions=self.right_thruster_position, is_global=False)
+        return
 
     def post_reset(self):
         
         self.initial_box_pos, self.initial_box_rot = self._boxes.get_world_poses()
        
-
     def set_targets(self, env_ids):
 
         num_sets = len(env_ids)

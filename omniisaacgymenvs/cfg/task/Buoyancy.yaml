@@ -9,16 +9,16 @@ env:
   envSpacing: 3
   episodeLength_s: 300
   enableDebugVis: False
-  controlFrequencyInv: 2    #10 marche pas #ms  
+  controlFrequencyInv: 2    #10 doest not work well  #unity in ms
 
 sim:
   dt: 0.01       #0.00833  #1/120s
   use_gpu_pipeline: ${eq:${...pipeline},"gpu"}
   gravity: [0.0, 0.0, -9.81]
-  material_density: 500.0
+  material_density: 138.0
   box_width: 0.40
-  box_large: 0.50
-  box_high: 0.1
+  box_large: 0.60
+  box_high: 0.3
   add_ground_plane: True
   add_distant_light: True
   use_flatcache: True

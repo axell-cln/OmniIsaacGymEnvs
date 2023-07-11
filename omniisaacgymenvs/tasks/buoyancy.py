@@ -169,16 +169,16 @@ class BuoyancyTask(RLTask):
 
         ##some tests for the thrusters
         if self.stop_boat < 1000 :
-            self.thrusters[:,1]=-5.0
-            self.thrusters[:,4]=0.0
+            self.thrusters[:,0]=-5.0
+            self.thrusters[:,3]=0.0
         
         if self.stop_boat > 1000 and self.stop_boat < 2000 :
-            self.thrusters[:,1]=-10.0
-            self.thrusters[:,4]=-10.0
+            self.thrusters[:,0]=-10.0
+            self.thrusters[:,3]=-10.0
         
         if self.stop_boat > 2000 :
-            self.thrusters[:,1]=0.0
-            self.thrusters[:,4]=-5.0
+            self.thrusters[:,0]=0.0
+            self.thrusters[:,3]=-5.0
         
         self.stop_boat+=1
 
@@ -187,7 +187,7 @@ class BuoyancyTask(RLTask):
         self.drag[:,:]=self.buoyancy_physics.compute_drag(box_velocities[:,:])
                    
         forces_applied_on_center= self.archimedes + self.drag[:,:3]
-        self._boxes.apply_forces_and_torques_at_pos(forces=forces_applied_on_center)
+        self._boxes.apply_forces_and_torques_at_pos(forces=forces_applied_on_center, torques=self.drag[:,3:])
         self._thrusters_left.apply_forces_and_torques_at_pos(self.thrusters[:,:3], positions=self.left_thruster_position, is_global=False)
         self._thrusters_right.apply_forces_and_torques_at_pos(self.thrusters[:,3:], positions=self.right_thruster_position, is_global=False)
 
@@ -196,13 +196,13 @@ class BuoyancyTask(RLTask):
 
 
     def propagate_forces(self):
-        # Apply forces
+                           
         forces_applied_on_center= self.archimedes + self.drag[:,:3]
-        self._boxes.apply_forces_and_torques_at_pos(forces=forces_applied_on_center)
+        self._boxes.apply_forces_and_torques_at_pos(forces=forces_applied_on_center, torques=self.drag[:,3:])
         self._thrusters_left.apply_forces_and_torques_at_pos(self.thrusters[:,:3], positions=self.left_thruster_position, is_global=False)
         self._thrusters_right.apply_forces_and_torques_at_pos(self.thrusters[:,3:], positions=self.right_thruster_position, is_global=False)
-        return
-
+    
+    
     def post_reset(self):
         
         self.initial_box_pos, self.initial_box_rot = self._boxes.get_world_poses()

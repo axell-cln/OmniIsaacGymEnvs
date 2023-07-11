@@ -68,9 +68,9 @@ class BuoyantObject:
         drag[:,1]=-coeff_drag_y*abs(y_velocity)*y_velocity
         drag[:,2]=-coeff_drag_z*abs(z_velocity)*z_velocity 
 
-        drag[:,3]=-coeff_drag_x*abs(x_rotation)*x_rotation
-        drag[:,4]=-coeff_drag_y*abs(y_rotation)*y_rotation
-        drag[:,5]=-coeff_drag_z*abs(z_rotation)*z_rotation
+        """ drag[:,3]=-coeff_drag_x*abs(x_rotation)*x_rotation
+        drag[:,4]=-coeff_drag_y*abs(y_rotation)*y_rotation """
+        drag[:,5]=-coeff_drag_z*abs(z_rotation)*z_rotation 
 
         return drag
 

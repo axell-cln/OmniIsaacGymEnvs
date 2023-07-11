@@ -195,12 +195,12 @@ class BuoyancyTask(RLTask):
         #print(self._boxes.get_world_poses())
 
 
-    def propagate_forces(self):
+    """ def propagate_forces(self):
                            
         forces_applied_on_center= self.archimedes + self.drag[:,:3]
         self._boxes.apply_forces_and_torques_at_pos(forces=forces_applied_on_center, torques=self.drag[:,3:])
         self._thrusters_left.apply_forces_and_torques_at_pos(self.thrusters[:,:3], positions=self.left_thruster_position, is_global=False)
-        self._thrusters_right.apply_forces_and_torques_at_pos(self.thrusters[:,3:], positions=self.right_thruster_position, is_global=False)
+        self._thrusters_right.apply_forces_and_torques_at_pos(self.thrusters[:,3:], positions=self.right_thruster_position, is_global=False) """
     
     
     def post_reset(self):

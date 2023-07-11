@@ -63,7 +63,7 @@ class VecEnvRLGames(VecEnvBase):
         
         for _ in range(self._task.control_frequency_inv):
             self._world.step(render=self._render)
-            self._task.propagate_forces()
+            #self._task.propagate_forces()
             self.sim_frame_count += 1
 
         self._obs, self._rew, self._resets, self._extras = self._task.post_physics_step()

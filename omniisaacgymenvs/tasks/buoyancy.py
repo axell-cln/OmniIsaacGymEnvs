@@ -8,6 +8,7 @@ from omni.isaac.core.prims import RigidPrimView
 from omni.isaac.core.utils.prims import get_prim_at_path
 from omniisaacgymenvs.envs.buoyancy_physics import BuoyantObject
 from omni.isaac.core.utils.stage import add_reference_to_stage
+from omni.isaac.core.utils.rotations import quat_to_euler_angles
 
 import omni
 from omni.physx.scripts import utils
@@ -75,6 +76,7 @@ class BuoyancyTask(RLTask):
         self.thrusters=torch.zeros((self._num_envs, 6), device=self._device, dtype=torch.float32)
         self.high_submerged=torch.zeros((self._num_envs), device=self._device, dtype=torch.float32)
         self.submerged_volume=torch.zeros((self._num_envs), device=self._device, dtype=torch.float32)
+        self.stable_torque=torch.zeros((self._num_envs, 3), device=self._device, dtype=torch.float32)
 
         return
 
@@ -138,13 +140,20 @@ class BuoyancyTask(RLTask):
         
         self.obs_buf[..., 0:3] = self.root_pos
         self.obs_buf[..., 3:7] = self.root_rot
-      
+
         observations = {
             self._boxes.name: {
                 "obs_buf": self.obs_buf
             }
         }
         return observations
+
+    def get_yaws(self, quaternions):
+        
+        yaws = np.zeros((self.num_envs,3), dtype=float)
+        for i in range(self._num_envs):
+            yaws[i,:]=quat_to_euler_angles(quaternions[i,:])
+        return torch.tensor(yaws).to(self._device)
 
     def pre_physics_step(self, actions) -> None:
         if not self._env._world.is_playing():
@@ -157,15 +166,17 @@ class BuoyancyTask(RLTask):
 
         actions = actions.clone().to(self._device)
         indices = torch.arange(self._boxes.count, dtype=torch.int64, device=self._device)
-        box_pos, _= self._boxes.get_world_poses(clone=False)
-        box_velocities=self._boxes.get_velocities(clone=False)
+        
+        box_poses, box_quaternions = self._boxes.get_world_poses(clone=False)
+        box_velocities = self._boxes.get_velocities(clone=False)
 
-            
+        yaws = self.get_yaws(box_quaternions)
+
         #body underwater
-        self.high_submerged[:]=torch.clamp(self.half_box_size-box_pos[:,2], 0, self.box_high)
+        self.high_submerged[:]=torch.clamp(self.half_box_size-box_poses[:,2], 0, self.box_high)
         self.submerged_volume[:]= torch.clamp(self.high_submerged * self.box_width * self.box_large, 0, self.box_volume)
         self.archimedes[:,:]=self.buoyancy_physics.compute_archimedes(self.water_density, self.submerged_volume, -self.gravity)
-        
+        self.stable_torque[:,:]=self.buoyancy_physics.stabilize_boat(yaws)
 
         ##some tests for the thrusters
         if self.stop_boat < 1000 :
@@ -182,12 +193,12 @@ class BuoyancyTask(RLTask):
         
         self.stop_boat+=1
 
-        print(self.stop_boat)
+        #print(self.stop_boat)
 
         self.drag[:,:]=self.buoyancy_physics.compute_drag(box_velocities[:,:])
                    
         forces_applied_on_center= self.archimedes + self.drag[:,:3]
-        self._boxes.apply_forces_and_torques_at_pos(forces=forces_applied_on_center, torques=self.drag[:,3:])
+        self._boxes.apply_forces_and_torques_at_pos(forces=forces_applied_on_center, torques=self.drag[:,3:] + self.stable_torque)
         self._thrusters_left.apply_forces_and_torques_at_pos(self.thrusters[:,:3], positions=self.left_thruster_position, is_global=False)
         self._thrusters_right.apply_forces_and_torques_at_pos(self.thrusters[:,3:], positions=self.right_thruster_position, is_global=False)
 

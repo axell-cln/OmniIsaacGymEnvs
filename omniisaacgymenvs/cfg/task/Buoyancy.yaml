@@ -9,7 +9,7 @@ env:
   envSpacing: 3
   episodeLength_s: 300
   enableDebugVis: False
-  controlFrequencyInv: 2    #10 doest not work well  #unity in ms
+  #controlFrequencyInv: 2    #10 doest not work well  #unity in ms
 
 sim:
   dt: 0.01       #0.00833  #1/120s

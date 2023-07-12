@@ -1,5 +1,4 @@
 import torch
-import math
 
 class BuoyantObject:
     def __init__(self, num_envs):
@@ -62,15 +61,26 @@ class BuoyantObject:
         
         """ drag[:,0]=-x_unit*coeff_drag_x*x_velocity*x_velocity
         drag[:,1]=-y_unit*coeff_drag_y*y_velocity*y_velocity
-        drag[:,2]=-z_unit*coeff_drag_z*z_velocity*z_velocity """
+        drag[:,2]=-z_unit*coeff_drag_z*z_velocity*z_velocity  """
 
         drag[:,0]=-coeff_drag_x*abs(x_velocity)*x_velocity
         drag[:,1]=-coeff_drag_y*abs(y_velocity)*y_velocity
         drag[:,2]=-coeff_drag_z*abs(z_velocity)*z_velocity 
 
-        """ drag[:,3]=-coeff_drag_x*abs(x_rotation)*x_rotation
-        drag[:,4]=-coeff_drag_y*abs(y_rotation)*y_rotation """
+        drag[:,3]=-coeff_drag_x*abs(x_rotation)*x_rotation
+        drag[:,4]=-coeff_drag_y*abs(y_rotation)*y_rotation
         drag[:,5]=-coeff_drag_z*abs(z_rotation)*z_rotation 
+
+        return drag
+    
+    def stabilize_boat(self,yaws):
+         
+        K=5
+        drag=torch.zeros((self._num_envs, 3), dtype=torch.float32)
+        
+        drag[:,0] = - K * yaws[:,0]
+        drag[:,1] = - K * yaws[:,1]
+        #drag[:,2] = - K * yaws[:,2]
 
         return drag
 

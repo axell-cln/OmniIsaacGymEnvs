@@ -18,5 +18,7 @@ class HeronView(ArticulationView):
             reset_xform_properties=False
         )
 
-        #not sure
-        self.thrusters = [RigidPrimView(prim_paths_expr=f"/World/envs/.*/heron/thruster_{i}", name=f"thruster_{i}_view", reset_xform_properties=False) for i in range(2)]
+        #self.thrusters = [RigidPrimView(prim_paths_expr=f"/World/envs/.*/heron/thruster_{i}", name=f"thruster_{i}_view", reset_xform_properties=False) for i in range(2)]
+        self._thrusters_left= RigidPrimView(prim_paths_expr="/World/envs/.*/heron/thruster_1", name="left_thruster_view", reset_xform_properties=False)
+        self._thrusters_right= RigidPrimView(prim_paths_expr="/World/envs/.*/heron/thruster_0", name="right_thruster_view", reset_xform_properties=False)
+        self._body= RigidPrimView(prim_paths_expr="/World/envs/.*/heron/dummy_link", name="body_view", reset_xform_properties=False)

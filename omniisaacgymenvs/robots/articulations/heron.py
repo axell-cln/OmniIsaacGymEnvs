@@ -25,7 +25,7 @@ class Heron(Robot):
         self._name = name
 
         if self._usd_path is None:
-            self._usd_path = "/home/isaac_user/Desktop/heron/heron_description/heron.usd"
+            self._usd_path = "/home/axelcoulon/projects/assets/heron/heron_description/heron.usd"
 
         add_reference_to_stage(self._usd_path, prim_path)
 

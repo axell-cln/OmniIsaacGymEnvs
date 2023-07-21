@@ -48,26 +48,27 @@ class BuoyancyTask(RLTask):
         self.box_high=self._task_cfg["sim"]["box_high"]
 
         self.box_volume=self.box_width*self.box_large*self.box_high
-        self.box_mass=self.box_volume*self.box_density
+
+        self.box_mass=self._task_cfg["sim"]["mass"]
 
         self.half_box_size=self.box_high/2
 
         self._num_observations = 7
-        self._num_actions = 1
+        self._num_actions = 2
 
         self.stop_boat = 0
         
         self.water_density=1000 # kg/m^3
 
-        self._box_position = torch.tensor([0, 0, 0.025])
+        self._box_position = torch.tensor([0.0, 0.0, 0.0])
 
-        self.left_thruster_position = torch.tensor([0.1, 0.25, -0.025])
-        self.right_thruster_position = torch.tensor([-0.1, 0.25, -0.025])
+        self.left_thruster_position = torch.tensor([-0.6, 0.3, -0.08])
+        self.right_thruster_position = torch.tensor([-0.6, -0.3, -0.08])
 
         RLTask.__init__(self, name=name, env=env)
 
         self.target_positions = torch.zeros((self._num_envs, 3), device=self._device, dtype=torch.float32)
-        self.target_positions[:, 2] = 1
+        self.target_positions[:, 2] = self.box_high/2
 
         self.all_indices = torch.arange(self._num_envs, dtype=torch.int32, device=self._device)
 
@@ -86,11 +87,9 @@ class BuoyancyTask(RLTask):
         self.get_buoyancy()
         RLTask.set_up_scene(self, scene)
         self._boxes = RigidPrimView(prim_paths_expr="/World/envs/.*/box/body", name="box_view", reset_xform_properties=False)
-        #self._drag_rigid_body= RigidPrimView(prim_paths_expr="/World/envs/.*/box/drag", name="box_drag_view", reset_xform_properties=False)
         self._thrusters_left= RigidPrimView(prim_paths_expr="/World/envs/.*/box/left_thruster", name="left_thruster_view", reset_xform_properties=False)
         self._thrusters_right= RigidPrimView(prim_paths_expr="/World/envs/.*/box/right_thruster", name="right_thruster_view", reset_xform_properties=False)
         scene.add(self._boxes)
-        #scene.add(self._drag_rigid_body)
         scene.add(self._thrusters_left)
         scene.add(self._thrusters_right)
         return
@@ -107,7 +106,7 @@ class BuoyancyTask(RLTask):
         box_prim_path=self.default_zero_env_path + "/box"
         add_reference_to_stage(prim_path=box_prim_path, usd_path=box_usd_path, prim_type="Xform")
 
-        ############# this script below is provided in case you need to have a box.usd 
+        ############# this script below is provided in case you need to have a box.usd but have to be updated to the boat dimension
 
         """    box = DynamicCuboid(
             prim_path=self.default_zero_env_path + "/box", 
@@ -177,23 +176,18 @@ class BuoyancyTask(RLTask):
         self.submerged_volume[:]= torch.clamp(self.high_submerged * self.box_width * self.box_large, 0, self.box_volume)
         self.archimedes[:,:]=self.buoyancy_physics.compute_archimedes(self.water_density, self.submerged_volume, -self.gravity)
         self.stable_torque[:,:]=self.buoyancy_physics.stabilize_boat(yaws)
-
+        
         ##some tests for the thrusters
-        if self.stop_boat < 1000 :
-            self.thrusters[:,0]=-5.0
-            self.thrusters[:,3]=0.0
+        if self.stop_boat < 400 :
+            self.thrusters[:,:]=self.buoyancy_physics.command_to_thrusters_force(-1,-1)
         
-        if self.stop_boat > 1000 and self.stop_boat < 2000 :
-            self.thrusters[:,0]=-10.0
-            self.thrusters[:,3]=-10.0
+        if self.stop_boat > 400 and self.stop_boat < 700 :
+            self.thrusters[:,:]=self.buoyancy_physics.command_to_thrusters_force(-1,0.5)
         
-        if self.stop_boat > 2000 :
-            self.thrusters[:,0]=0.0
-            self.thrusters[:,3]=-5.0
+        if self.stop_boat > 700 :
+            self.thrusters[:,:]=self.buoyancy_physics.command_to_thrusters_force(1,1)
         
         self.stop_boat+=1
-
-        #print(self.stop_boat)
 
         self.drag[:,:]=self.buoyancy_physics.compute_drag(box_velocities[:,:])
                    
@@ -202,8 +196,13 @@ class BuoyancyTask(RLTask):
         self._thrusters_left.apply_forces_and_torques_at_pos(self.thrusters[:,:3], positions=self.left_thruster_position, is_global=False)
         self._thrusters_right.apply_forces_and_torques_at_pos(self.thrusters[:,3:], positions=self.right_thruster_position, is_global=False)
 
-        #print("drag:\t{:.2f}\t{:.2f}\t{:.2f}\t{:.2f}\t{:.2f}\t{:.2f}".format(self.drag[0,0],self.drag[0,1],self.drag[0,2],self.drag[0,3],self.drag[0,4],self.drag[0,5]))
-        #print(self._boxes.get_world_poses())
+        """Printing debugging"""
+        #print(self.stop_boat)
+        print("forces_applied_on_center: ", forces_applied_on_center[0,:])
+        print("thrusters: ", self.thrusters[0,:])
+        print("drag: ", self.drag[0,:])
+        print("stable_torque: ", self.stable_torque[0,:])
+        print("")
 
 
     """ def propagate_forces(self):
@@ -224,14 +223,11 @@ class BuoyancyTask(RLTask):
         envs_long = env_ids.long()
 
         # set target position randomly z in (0.5, 1.5)
-        self.target_positions[envs_long, 2] = torch.rand(num_sets, device=self._device) + 0.5
+        #self.target_positions[envs_long, 2] = torch.rand(num_sets, device=self._device) + 0.5
 
         # shift the target up so it visually aligns better
         box_pos = self.target_positions[envs_long] + self._env_pos[envs_long]
-        
-        #box_pos[:, 2] += 0.4
-        #box_pos[:, 2] = 0.05
-
+    
         self._boxes.set_world_poses(box_pos[:, 0:3], self.initial_box_rot[envs_long].clone(), indices=env_ids)
 
     def reset_idx(self, env_ids):

@@ -7,7 +7,7 @@ physics_engine: ${..physics_engine}
 env:
   numEnvs: ${resolve_default:8,${...num_envs}}
   envSpacing: 3
-  episodeLength_s: 300
+  episodeLength_s: 400
   enableDebugVis: False
   #controlFrequencyInv: 2    #10 doest not work well  #unity in ms
 

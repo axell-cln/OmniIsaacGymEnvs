@@ -61,6 +61,7 @@ class BuoyancyTask(RLTask):
         self.boxes_initial_rot = torch.zeros((self._num_envs, 4), device=self._device, dtype=torch.float32)
         self.boxes_initial_pos[:, 2] = self.box_high/2
         self.boxes_initial_rot[:,0]=1.0
+        self.boxes_initial_rot[:,2]=0.45
         
 
         #volume submerged
@@ -201,7 +202,7 @@ class BuoyancyTask(RLTask):
     """ def propagate_forces(self):
                            
         forces_applied_on_center= self.archimedes + self.drag[:,:3]
-        self._boxes.apply_forces_and_torques_at_pos(forces=forces_applied_on_center, torques=self.drag[:,3:])
+        self._boxes.apply_forces_and_torques_at_pos(forces=forces_applied_on_center, torques=self.drag[:,3:] + self.stable_torque)
         self._thrusters_left.apply_forces_and_torques_at_pos(self.thrusters[:,:3], positions=self.left_thruster_position, is_global=False)
         self._thrusters_right.apply_forces_and_torques_at_pos(self.thrusters[:,3:], positions=self.right_thruster_position, is_global=False) """
     
@@ -238,5 +239,5 @@ class BuoyancyTask(RLTask):
         #no resets for now
 
         """Flags the environnments in which the episode should end."""
-        #resets = torch.where(self.progress_buf >= self._max_episode_length - 1, 1.0, self.reset_buf.double())
-        #self.reset_buf[:] = resets
+        resets = torch.where(self.progress_buf >= self._max_episode_length - 1, 1.0, self.reset_buf.double())
+        self.reset_buf[:] = resets

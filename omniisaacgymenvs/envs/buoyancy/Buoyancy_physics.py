@@ -19,58 +19,6 @@ class BuoyantObject:
         return archimedes
     
         
-    def compute_thrusters_constant_force(self):
-        """for testng purpose"""
-        thrusters=torch.zeros((self._num_envs, 6), dtype=torch.float32)
-        
-        #turn
-        thrusters[:,0]=400
-        thrusters[:,3]=-400
-
-        return thrusters
-    
-  
-    def command_to_thrusters_force(self, left_thruster_command, right_thruster_command):
-         
-        """This function implement the non-linearity of the thrusters according to a command"""
-
-        if left_thruster_command<-1 or left_thruster_command>1:
-            print("error left command")
-            return 
-        if right_thruster_command<-1 or right_thruster_command>1:
-            print("error right command")
-            return 
-        
-        T_left=0
-        T_right=0
-        coeff_neg_commands=[88.61013986, 163.99545455, 76.81641608, 11.9476958, 0.20374615]
-        coeff_pos_commands=[-197.800699, 334.050699, -97.6197902, 7.59341259, -0.0301846154]
-        n=len(coeff_neg_commands)-1
-
-        if left_thruster_command<0:
-            for i in range(n):
-                T_left+=(left_thruster_command**(n-i))*coeff_neg_commands[i]
-            T_left+=coeff_neg_commands[n]
-        elif left_thruster_command>=0:
-            for i in range(n):
-                T_left+=(left_thruster_command**(n-i))*coeff_pos_commands[i]
-            T_left+=coeff_pos_commands[n]
-        
-        if right_thruster_command<0:
-            for i in range(n):
-                T_right+=(right_thruster_command**(n-i))*coeff_neg_commands[i]
-            T_right+=coeff_neg_commands[n]
-        elif right_thruster_command>=0:
-            for i in range(n):
-                T_right+=(right_thruster_command**(n-i))*coeff_pos_commands[i]
-            T_right+=coeff_pos_commands[n]
-
-        thrusters=torch.zeros((self._num_envs, 6), dtype=torch.float32)
-        thrusters[:,0]=T_left
-        thrusters[:,3]=T_right
-
-        return thrusters
-        
 
     def compute_drag(self, boat_velocities):
 

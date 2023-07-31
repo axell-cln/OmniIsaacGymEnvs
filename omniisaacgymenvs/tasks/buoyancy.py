@@ -1,7 +1,8 @@
 from omniisaacgymenvs.tasks.base.rl_task import RLTask
 from omni.isaac.core.utils.torch.rotations import *
 from omni.isaac.core.prims import RigidPrimView
-from omniisaacgymenvs.envs.buoyancy_physics import BuoyantObject
+from omniisaacgymenvs.envs.buoyancy.Buoyancy_physics import BuoyantObject
+from omniisaacgymenvs.envs.buoyancy.ThrusterDynamics import *
 from omni.isaac.core.utils.stage import add_reference_to_stage
 from omni.isaac.core.utils.rotations import quat_to_euler_angles
  
@@ -25,7 +26,9 @@ class BuoyancyTask(RLTask):
         self._env_spacing = self._task_cfg["env"]["envSpacing"]
         self._max_episode_length = self._task_cfg["env"]["episodeLength_s"]
 
+        #time constants
         self.dt = self._task_cfg["sim"]["dt"]
+        self.timeConstant = self._task_cfg["dynamics"]["thrusters"]["timeConstant"]
 
         #physics
         self.gravity=self._task_cfg["sim"]["gravity"][2]
@@ -79,7 +82,7 @@ class BuoyancyTask(RLTask):
     def set_up_scene(self, scene) -> None:
         
         self.get_box()
-        self.get_buoyancy_physics()
+        self.get_buoyancy()
         RLTask.set_up_scene(self, scene)
         self._boxes = RigidPrimView(prim_paths_expr="/World/envs/.*/box/body", name="box_view", reset_xform_properties=False)
         self._thrusters_left= RigidPrimView(prim_paths_expr="/World/envs/.*/box/left_thruster", name="left_thruster_view", reset_xform_properties=False)
@@ -90,9 +93,10 @@ class BuoyancyTask(RLTask):
         return
 
 
-    def get_buoyancy_physics(self):
+    def get_buoyancy(self):
 
         self.buoyancy_physics=BuoyantObject(self.num_envs)
+        self.thrusters_dynamics=DynamicsFirstOrder(self.timeConstant, self.num_envs)
 
     def get_box(self):
     
@@ -174,13 +178,13 @@ class BuoyancyTask(RLTask):
         
         ##some tests for the thrusters
         if self.stop_boat < 400 :
-            self.thrusters[:,:]=self.buoyancy_physics.command_to_thrusters_force(-1,-1)
+            self.thrusters[:,:]=self.thrusters_dynamics.command_to_thrusters_force(0.0, 0.0)
         
         if self.stop_boat > 400 and self.stop_boat < 700 :
-            self.thrusters[:,:]=self.buoyancy_physics.command_to_thrusters_force(-1,0.5)
+            self.thrusters[:,:]=self.thrusters_dynamics.command_to_thrusters_force(1.0,1.0)
         
         if self.stop_boat > 700 :
-            self.thrusters[:,:]=self.buoyancy_physics.command_to_thrusters_force(1,1)
+            self.thrusters[:,:]=self.thrusters_dynamics.command_to_thrusters_force(0.0, 0.0)
         
         self.stop_boat+=1
 
@@ -192,11 +196,11 @@ class BuoyancyTask(RLTask):
         self._thrusters_right.apply_forces_and_torques_at_pos(self.thrusters[:,3:], positions=self.right_thruster_position, is_global=False)
 
         """Printing debugging"""
-        print("forces_applied_on_center: ", forces_applied_on_center[0,:])
-        print("thrusters: ", self.thrusters[0,:])
-        print("drag: ", self.drag[0,:])
-        print("stable_torque: ", self.stable_torque[0,:])
-        print("")
+        #print("forces_applied_on_center: ", forces_applied_on_center[0,:])
+        #print("thrusters: ", self.thrusters[0,:])
+        #print("drag: ", self.drag[0,:])
+        #print("stable_torque: ", self.stable_torque[0,:])
+        #print("")
 
 
     """ def propagate_forces(self):
@@ -239,5 +243,5 @@ class BuoyancyTask(RLTask):
         #no resets for now
 
         """Flags the environnments in which the episode should end."""
-        resets = torch.where(self.progress_buf >= self._max_episode_length - 1, 1.0, self.reset_buf.double())
-        self.reset_buf[:] = resets
+        #resets = torch.where(self.progress_buf >= self._max_episode_length - 1, 1.0, self.reset_buf.double())
+        #self.reset_buf[:] = resets

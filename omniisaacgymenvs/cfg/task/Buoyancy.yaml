@@ -11,6 +11,10 @@ env:
   enableDebugVis: False
   #controlFrequencyInv: 2    #10 doest not work well  #unity in ms
 
+dynamics:
+  thrusters:
+    timeConstant: 0.05
+
 sim:
   dt: 0.01       #0.00833  #1/120s
   use_gpu_pipeline: ${eq:${...pipeline},"gpu"}

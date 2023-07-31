@@ -83,7 +83,7 @@ class BuoyantObject:
 
         coeff_drag_x = 10.0
         coeff_drag_y = 10.0
-        coeff_drag_z = 0.7
+        coeff_drag_z = 0.002
 
         drag=torch.zeros((self._num_envs, 6), dtype=torch.float32)
         

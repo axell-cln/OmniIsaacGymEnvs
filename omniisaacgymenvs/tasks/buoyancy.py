@@ -1,24 +1,13 @@
 from omniisaacgymenvs.tasks.base.rl_task import RLTask
-from omniisaacgymenvs.robots.articulations.ingenuity import Ingenuity
-from omniisaacgymenvs.robots.articulations.views.ingenuity_view import IngenuityView
-
 from omni.isaac.core.utils.torch.rotations import *
-from omni.isaac.core.objects import DynamicCuboid
 from omni.isaac.core.prims import RigidPrimView
-from omni.isaac.core.utils.prims import get_prim_at_path
 from omniisaacgymenvs.envs.buoyancy_physics import BuoyantObject
 from omni.isaac.core.utils.stage import add_reference_to_stage
 from omni.isaac.core.utils.rotations import quat_to_euler_angles
-
-import omni
+ 
 from omni.physx.scripts import utils
-from pxr import UsdPhysics
-from pxr import Gf
-
 import numpy as np
 import torch
-import math
-
 
 class BuoyancyTask(RLTask):
     def __init__(
@@ -38,53 +27,58 @@ class BuoyancyTask(RLTask):
 
         self.dt = self._task_cfg["sim"]["dt"]
 
-        #boxes physics
+        #physics
         self.gravity=self._task_cfg["sim"]["gravity"][2]
-        
+        self.water_density=1000 # kg/m^3
+
+        #boxes dimension to compute archimedes
         self.box_density=self._task_cfg["sim"]["material_density"]
-        
         self.box_width=self._task_cfg["sim"]["box_width"]
         self.box_large=self._task_cfg["sim"]["box_large"]
         self.box_high=self._task_cfg["sim"]["box_high"]
-
         self.box_volume=self.box_width*self.box_large*self.box_high
-
         self.box_mass=self._task_cfg["sim"]["mass"]
-
         self.half_box_size=self.box_high/2
 
+        #task specifications
         self._num_observations = 7
         self._num_actions = 2
 
+        #for testing and debugging
         self.stop_boat = 0
         
-        self.water_density=1000 # kg/m^3
-
+        #for creating the box if no usd
         self._box_position = torch.tensor([0.0, 0.0, 0.0])
 
-        self.left_thruster_position = torch.tensor([-0.6, 0.3, -0.08])
-        self.right_thruster_position = torch.tensor([-0.6, -0.3, -0.08])
-
+        #positions constants
+        self.left_thruster_position = torch.tensor([-0.7, 0.35, 0.0])
+        self.right_thruster_position = torch.tensor([-0.7, -0.35, 0.0])
+        
         RLTask.__init__(self, name=name, env=env)
 
-        self.target_positions = torch.zeros((self._num_envs, 3), device=self._device, dtype=torch.float32)
-        self.target_positions[:, 2] = self.box_high/2
+        #others positions constants that need to be GPU 
+        self.boxes_initial_pos = torch.zeros((self._num_envs, 3), device=self._device, dtype=torch.float32)
+        self.boxes_initial_rot = torch.zeros((self._num_envs, 4), device=self._device, dtype=torch.float32)
+        self.boxes_initial_pos[:, 2] = self.box_high/2
+        self.boxes_initial_rot[:,0]=1.0
+        
 
-        self.all_indices = torch.arange(self._num_envs, dtype=torch.int32, device=self._device)
+        #volume submerged
+        self.high_submerged=torch.zeros((self._num_envs), device=self._device, dtype=torch.float32)
+        self.submerged_volume=torch.zeros((self._num_envs), device=self._device, dtype=torch.float32)
 
+        #forces to be applied
         self.archimedes=torch.zeros((self._num_envs, 3), device=self._device, dtype=torch.float32)
         self.drag=torch.zeros((self._num_envs, 6), device=self._device, dtype=torch.float32)
         self.thrusters=torch.zeros((self._num_envs, 6), device=self._device, dtype=torch.float32)
-        self.high_submerged=torch.zeros((self._num_envs), device=self._device, dtype=torch.float32)
-        self.submerged_volume=torch.zeros((self._num_envs), device=self._device, dtype=torch.float32)
         self.stable_torque=torch.zeros((self._num_envs, 3), device=self._device, dtype=torch.float32)
 
         return
 
     def set_up_scene(self, scene) -> None:
         
-        self.get_target()
-        self.get_buoyancy()
+        self.get_box()
+        self.get_buoyancy_physics()
         RLTask.set_up_scene(self, scene)
         self._boxes = RigidPrimView(prim_paths_expr="/World/envs/.*/box/body", name="box_view", reset_xform_properties=False)
         self._thrusters_left= RigidPrimView(prim_paths_expr="/World/envs/.*/box/left_thruster", name="left_thruster_view", reset_xform_properties=False)
@@ -95,11 +89,11 @@ class BuoyancyTask(RLTask):
         return
 
 
-    def get_buoyancy(self):
+    def get_buoyancy_physics(self):
 
         self.buoyancy_physics=BuoyantObject(self.num_envs)
 
-    def get_target(self):
+    def get_box(self):
     
 
         box_usd_path="/home/axelcoulon/projects/assets/box_thrusters.usd"
@@ -147,7 +141,7 @@ class BuoyancyTask(RLTask):
         }
         return observations
 
-    def get_yaws(self, quaternions):
+    def get_euler_angles(self, quaternions):
         
         yaws = np.zeros((self.num_envs,3), dtype=float)
         for i in range(self._num_envs):
@@ -169,7 +163,7 @@ class BuoyancyTask(RLTask):
         box_poses, box_quaternions = self._boxes.get_world_poses(clone=False)
         box_velocities = self._boxes.get_velocities(clone=False)
 
-        yaws = self.get_yaws(box_quaternions)
+        yaws = self.get_euler_angles(box_quaternions)
 
         #body underwater
         self.high_submerged[:]=torch.clamp(self.half_box_size-box_poses[:,2], 0, self.box_high)
@@ -197,7 +191,6 @@ class BuoyancyTask(RLTask):
         self._thrusters_right.apply_forces_and_torques_at_pos(self.thrusters[:,3:], positions=self.right_thruster_position, is_global=False)
 
         """Printing debugging"""
-        #print(self.stop_boat)
         print("forces_applied_on_center: ", forces_applied_on_center[0,:])
         print("thrusters: ", self.thrusters[0,:])
         print("drag: ", self.drag[0,:])
@@ -215,24 +208,22 @@ class BuoyancyTask(RLTask):
     
     def post_reset(self):
         
-        self.initial_box_pos, self.initial_box_rot = self._boxes.get_world_poses()
+        # randomize all envs
+        indices = torch.arange(self._boxes.count, dtype=torch.int64, device=self._device)
+        self.reset_idx(indices)
        
-    def set_targets(self, env_ids):
+    def reset_boxes(self, env_ids):
 
-        num_sets = len(env_ids)
         envs_long = env_ids.long()
 
-        # set target position randomly z in (0.5, 1.5)
-        #self.target_positions[envs_long, 2] = torch.rand(num_sets, device=self._device) + 0.5
-
         # shift the target up so it visually aligns better
-        box_pos = self.target_positions[envs_long] + self._env_pos[envs_long]
+        box_pos = self.boxes_initial_pos[envs_long] + self._env_pos[envs_long]
     
-        self._boxes.set_world_poses(box_pos[:, 0:3], self.initial_box_rot[envs_long].clone(), indices=env_ids)
+        self._boxes.set_world_poses(box_pos[:, 0:3], self.boxes_initial_rot[envs_long].clone(), indices=env_ids)
 
     def reset_idx(self, env_ids):
 
-        self.set_targets(env_ids)
+        self.reset_boxes(env_ids)
 
         # bookkeeping
         self.reset_buf[env_ids] = 0

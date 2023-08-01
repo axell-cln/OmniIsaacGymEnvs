@@ -1,4 +1,5 @@
 import torch
+import numpy as np 
 
 class BuoyantObject:
     def __init__(self, num_envs):
@@ -16,6 +17,28 @@ class BuoyantObject:
         """
         archimedes=torch.zeros((self._num_envs, 3), dtype=torch.float32)
         archimedes[:,2] = density_water * gravity * submerged_volume
+        return archimedes
+    
+    def compute_archimedes_metacentric(self, density_water, submerged_volume, gravity, angles, metacentric_width, metacentric_length):
+        """This function apply the archimedes force to the center of the boat"""
+
+        """Ideally, this function should not be applied only at the center of the boat, but at the center of the volume submerged underwater.
+        In this case, if the boat start to rotate around x and y axis, the part of the boat who isn't underwater anymore have no force except gravity applied,
+        it automatically balance the boat. But that would require to create 4 rigid body at each corner of the boat and then check which one of them is underwater.
+        """
+
+        #print(angles[:,0])
+        #print(metacentric_width)
+        roll = angles[:,0].cpu()
+        pitch = angles[:,1].cpu()
+
+        archimedes=torch.zeros((self._num_envs, 6), dtype=torch.float32)
+
+        archimedes[:,2] = density_water * gravity * submerged_volume
+        archimedes[:,3] = -1 * metacentric_width * np.sin(roll) * archimedes[:,2]
+        archimedes[:,4] = -1 * metacentric_length * np.sin(pitch) * archimedes[:,2]
+        
+
         return archimedes
     
         

@@ -16,10 +16,12 @@ class DynamicsZeroOrder:
         return cmd
 
 
+#add inheritance
+
 class DynamicsFirstOrder:
     def __init__(self, timeConstant, num_envs):
         self.num_envs = num_envs
-        self.tau = 3 * timeConstant
+        self.tau = timeConstant
         self.cmd_updated = 0
 
     def update(self, cmd, dt):
@@ -27,7 +29,7 @@ class DynamicsFirstOrder:
         alpha = math.exp(-dt/self.tau)
         self.cmd_updated = self.cmd_updated*alpha + (1.0 - alpha)*cmd
 
-        print(cmd)
+        #print(self.cmd_updated)
         return self.cmd_updated
     
     def compute_thrusters_constant_force(self):

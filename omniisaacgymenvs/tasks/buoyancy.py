@@ -73,6 +73,7 @@ class BuoyancyTask(RLTask):
 
         #forces to be applied
         self.archimedes=torch.zeros((self._num_envs, 3), device=self._device, dtype=torch.float32)
+        #self.archimedes=torch.zeros((self._num_envs, 6), device=self._device, dtype=torch.float32)
         self.drag=torch.zeros((self._num_envs, 6), device=self._device, dtype=torch.float32)
         self.thrusters=torch.zeros((self._num_envs, 6), device=self._device, dtype=torch.float32)
         self.stable_torque=torch.zeros((self._num_envs, 3), device=self._device, dtype=torch.float32)
@@ -148,10 +149,10 @@ class BuoyancyTask(RLTask):
 
     def get_euler_angles(self, quaternions):
         
-        yaws = np.zeros((self.num_envs,3), dtype=float)
+        angles = np.zeros((self.num_envs,3), dtype=float)
         for i in range(self._num_envs):
-            yaws[i,:]=quat_to_euler_angles(quaternions[i,:])
-        return torch.tensor(yaws).to(self._device)
+            angles[i,:]=quat_to_euler_angles(quaternions[i,:])
+        return torch.tensor(angles).to(self._device)
 
     def pre_physics_step(self, actions) -> None:
         if not self._env._world.is_playing():
@@ -168,13 +169,16 @@ class BuoyancyTask(RLTask):
         box_poses, box_quaternions = self._boxes.get_world_poses(clone=False)
         box_velocities = self._boxes.get_velocities(clone=False)
 
-        yaws = self.get_euler_angles(box_quaternions)
+        angles = self.get_euler_angles(box_quaternions)
 
         #body underwater
         self.high_submerged[:]=torch.clamp(self.half_box_size-box_poses[:,2], 0, self.box_high)
         self.submerged_volume[:]= torch.clamp(self.high_submerged * self.box_width * self.box_large, 0, self.box_volume)
         self.archimedes[:,:]=self.buoyancy_physics.compute_archimedes(self.water_density, self.submerged_volume, -self.gravity)
-        self.stable_torque[:,:]=self.buoyancy_physics.stabilize_boat(yaws)
+        #self.archimedes[:,:]=self.buoyancy_physics.compute_archimedes_metacentric(self.water_density, self.submerged_volume, -self.gravity, angles, self.box_width/2, self.box_large/2)
+        self.stable_torque[:,:]=self.buoyancy_physics.stabilize_boat(angles)
+
+        print(self.archimedes)
         
         ##some tests for the thrusters
         if self.stop_boat < 400 :
@@ -190,7 +194,9 @@ class BuoyancyTask(RLTask):
 
         self.drag[:,:]=self.buoyancy_physics.compute_drag(box_velocities[:,:])
                    
+        #forces_applied_on_center= self.archimedes[:,:3] + self.drag[:,:3]
         forces_applied_on_center= self.archimedes + self.drag[:,:3]
+        #self._boxes.apply_forces_and_torques_at_pos(forces=forces_applied_on_center, torques=self.drag[:,3:] + self.archimedes[:,3:])
         self._boxes.apply_forces_and_torques_at_pos(forces=forces_applied_on_center, torques=self.drag[:,3:] + self.stable_torque)
         self._thrusters_left.apply_forces_and_torques_at_pos(self.thrusters[:,:3], positions=self.left_thruster_position, is_global=False)
         self._thrusters_right.apply_forces_and_torques_at_pos(self.thrusters[:,3:], positions=self.right_thruster_position, is_global=False)

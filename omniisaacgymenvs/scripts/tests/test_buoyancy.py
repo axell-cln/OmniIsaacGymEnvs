@@ -9,8 +9,9 @@ metacentric_width = 0.5
 metacentric_length = 0.7
 submerged_volume = 0.14
 
-roll_pitch_yaws = torch.tensor([[0.5, 0.0, 0.0], [0.0, 0.5, 0.0], [0.0, 0.0, 0.5]], dtype=torch.float32)
-quaternions = torch.tensor([[0.969, 0.247, 0.0, 0.0], [0.969, 0.0, 0.247, 0.0], [0.969, 0.0, 0.0, 0.247]], dtype=torch.float32)
+#correspond à une rotation de 45 degrés
+roll_pitch_yaws = torch.tensor([[0.785, 0.0, 0.0], [0.0, 0.785, 0.0], [0.785, 0.785, 0.0]], dtype=torch.float32)
+quaternions = torch.tensor([[ 0.924, 0.383, 0.0, 0.0], [0.924, 0.0, 0.383, 0.0], [  0.854,  0.354,  0.354, 0.146]], dtype=torch.float32)
 
 # Créer un objet de la classe BuoyantObject
 buoyant_obj = BuoyantObject(num_envs, water_density, gravity, metacentric_width, metacentric_length)

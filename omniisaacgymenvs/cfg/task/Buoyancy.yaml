@@ -15,6 +15,15 @@ dynamics:
   thrusters:
     timeConstant: 0.05
 
+damping :
+  linear_damping: [-16.44998712, -15.79776044, -100,-13,-13, -6]
+  quadratic_damping: [-2.942, -2.7617212, -10, -5, -5, -5]
+  linear_damping_forward_speed: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  offset_linear_damping: 0.0
+  offset_lin_forward_damping_speed: 0.0
+  offset_nonlin_damping: 0.0
+  scaling_damping: 1.0
+
 sim:
   dt: 0.01       #0.00833  #1/120s
   use_gpu_pipeline: ${eq:${...pipeline},"gpu"}

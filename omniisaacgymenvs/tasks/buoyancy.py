@@ -1,8 +1,9 @@
 from omniisaacgymenvs.tasks.base.rl_task import RLTask
 from omni.isaac.core.utils.torch.rotations import *
 from omni.isaac.core.prims import RigidPrimView
-from omniisaacgymenvs.envs.buoyancy.Buoyancy_physics import BuoyantObject
-from omniisaacgymenvs.envs.buoyancy.ThrusterDynamics import *
+from omniisaacgymenvs.envs.BuoyancyPhysics.Buoyancy_physics import *
+from omniisaacgymenvs.envs.BuoyancyPhysics.ThrusterDynamics import *
+from omniisaacgymenvs.envs.BuoyancyPhysics.Hydrodynamics import *
 from omni.isaac.core.utils.stage import add_reference_to_stage
 from omni.isaac.core.utils.rotations import quat_to_euler_angles
  
@@ -96,8 +97,9 @@ class BuoyancyTask(RLTask):
 
     def get_buoyancy(self):
 
-        self.buoyancy_physics=BuoyantObject(self.num_envs)
+        self.buoyancy_physics=BuoyantObject(self.num_envs, self.water_density, self.gravity, self.box_width/2, self.box_large/2)
         self.thrusters_dynamics=DynamicsFirstOrder(self.timeConstant, self.num_envs)
+        self.hydrodynamics=HydrodynamicsObject(self.num_envs, torch.tensor([5.0, 5.0, 0.002]))
 
     def get_box(self):
     
@@ -136,6 +138,8 @@ class BuoyancyTask(RLTask):
     def get_observations(self) -> dict:
 
         self.root_pos, self.root_rot = self._boxes.get_world_poses(clone=False)
+
+        #get rotation matrix
         
         self.obs_buf[..., 0:3] = self.root_pos
         self.obs_buf[..., 3:7] = self.root_rot
@@ -166,17 +170,19 @@ class BuoyancyTask(RLTask):
         actions = actions.clone().to(self._device)
         indices = torch.arange(self._boxes.count, dtype=torch.int64, device=self._device)
         
+        #local or global ? 
         box_poses, box_quaternions = self._boxes.get_world_poses(clone=False)
         box_velocities = self._boxes.get_velocities(clone=False)
 
-        angles = self.get_euler_angles(box_quaternions)
+        angles = self.get_euler_angles(box_quaternions) #rpy roll pitch yaws
+
 
         #body underwater
         self.high_submerged[:]=torch.clamp(self.half_box_size-box_poses[:,2], 0, self.box_high)
         self.submerged_volume[:]= torch.clamp(self.high_submerged * self.box_width * self.box_large, 0, self.box_volume)
         self.archimedes[:,:]=self.buoyancy_physics.compute_archimedes(self.water_density, self.submerged_volume, -self.gravity)
         #self.archimedes[:,:]=self.buoyancy_physics.compute_archimedes_metacentric(self.water_density, self.submerged_volume, -self.gravity, angles, self.box_width/2, self.box_large/2)
-        self.stable_torque[:,:]=self.buoyancy_physics.stabilize_boat(angles)
+        #self.stable_torque[:,:]=self.buoyancy_physics.stabilize_boat(angles)
 
         print(self.archimedes)
         
@@ -192,7 +198,9 @@ class BuoyancyTask(RLTask):
         
         self.stop_boat+=1
 
-        self.drag[:,:]=self.buoyancy_physics.compute_drag(box_velocities[:,:])
+        self.drag[:,:]=self.hydrodynamics.compute_drag(box_velocities[:,:])
+
+    
                    
         #forces_applied_on_center= self.archimedes[:,:3] + self.drag[:,:3]
         forces_applied_on_center= self.archimedes + self.drag[:,:3]

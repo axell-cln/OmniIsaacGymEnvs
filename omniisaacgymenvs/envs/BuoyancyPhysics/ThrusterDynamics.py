@@ -9,17 +9,27 @@
 import math
 import torch
 
-class DynamicsZeroOrder:
+class Dynamics:
     def __init__(self):
+        self.cmd_updated = None
+        self.Reset()
+
+    def update(self, cmd, dt):
+      raise NotImplementedError()
+
+    def Reset(self):
+        self.cmd_updated = 0.
+
+class DynamicsZeroOrder(Dynamics):
+    def __init__(self):
+        super().__init__()
         return
     def update(self, cmd):
         return cmd
 
-
-#add inheritance
-
-class DynamicsFirstOrder:
+class DynamicsFirstOrder(Dynamics):
     def __init__(self, timeConstant, num_envs):
+        super().__init__()
         self.num_envs = num_envs
         self.tau = timeConstant
         self.cmd_updated = 0
@@ -43,6 +53,14 @@ class DynamicsFirstOrder:
             return thrusters
     
   
+    def command_to_thrusters_force_interpolate(self):
+
+        """pytorch interpolation"""
+
+        """get values in look up table"""
+        return 
+    
+
     def command_to_thrusters_force(self, left_thruster_command, right_thruster_command):
          
         """This function implement the non-linearity of the thrusters according to a command""" 

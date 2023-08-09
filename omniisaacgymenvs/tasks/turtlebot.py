@@ -48,7 +48,7 @@ class TurtlebotTask(RLTask):
         self.prev_heading = torch.zeros(self._num_envs).to(self._device)
         self.weird_offset=0.35
         self.target_position = torch.tensor([0.0, 0.0, self.weird_offset]).to(self._device)
-        self.robot_position=torch.tensor([0.0, 0.0, 0.00]).to(self._device)
+        self.robot_position=torch.tensor([0.0, 0.0, 0.025]).to(self._device)
 
         return
 
@@ -77,7 +77,7 @@ class TurtlebotTask(RLTask):
                 create_robot=True,
                 usd_path=turtlebot_asset_path,
                 position=self.robot_position,
-                orientation=np.array([1.0, 0.0, 0.0, 0.0])
+                orientation=np.array([ 1.0,  0.0, 0.0, 0.0])
             )
         )
         #create target and import
@@ -157,9 +157,6 @@ class TurtlebotTask(RLTask):
             ang_vel=actions[i][1].item()
             controls[i][:2] = torch.tensor([1.0,1.0])
             controls[i][2:] = self._diff_controller.forward([lin_vel,ang_vel])
-
-
-        
             
         self._robots.set_joint_velocities(controls)
        

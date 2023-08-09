@@ -67,17 +67,26 @@ class BuoyancyTask(RLTask):
         self.boxes_initial_rot[:,0]=1.0
         self.boxes_initial_rot[:,2]=0.45
         
-
+        #drag constants
+        self.drag_coefficients = torch.tensor([5.0, 5.0, 0.002])
+        self.linear_damping = self._task_cfg["dynamics"]["damping"]["linear_damping"]
+        self.quadratic_damping = self._task_cfg["dynamics"]["damping"]["quadratic_damping"]
+        self.linear_damping_forward_speed = self._task_cfg["dynamics"]["damping"]["linear_damping_forward_speed"]
+        self.offset_linear_damping = self._task_cfg["dynamics"]["damping"]["offset_linear_damping"]
+        self.offset_lin_forward_damping_speed = self._task_cfg["dynamics"]["damping"]["offset_lin_forward_damping_speed"]
+        self.offset_nonlin_damping = self._task_cfg["dynamics"]["damping"]["offset_nonlin_damping"]
+        self.scaling_damping = self._task_cfg["dynamics"]["damping"]["scaling_damping"]
+        self.offset_added_mass = self._task_cfg["dynamics"]["damping"]["offset_added_mass"]
+        self.scaling_added_mass = self._task_cfg["dynamics"]["damping"]["scaling_added_mass"]
+        
         #volume submerged
         self.high_submerged=torch.zeros((self._num_envs), device=self._device, dtype=torch.float32)
         self.submerged_volume=torch.zeros((self._num_envs), device=self._device, dtype=torch.float32)
 
         #forces to be applied
-        self.archimedes=torch.zeros((self._num_envs, 3), device=self._device, dtype=torch.float32)
-        #self.archimedes=torch.zeros((self._num_envs, 6), device=self._device, dtype=torch.float32)
+        self.archimedes=torch.zeros((self._num_envs, 6), device=self._device, dtype=torch.float32)
         self.drag=torch.zeros((self._num_envs, 6), device=self._device, dtype=torch.float32)
         self.thrusters=torch.zeros((self._num_envs, 6), device=self._device, dtype=torch.float32)
-        self.stable_torque=torch.zeros((self._num_envs, 3), device=self._device, dtype=torch.float32)
 
         return
 
@@ -99,7 +108,7 @@ class BuoyancyTask(RLTask):
 
         self.buoyancy_physics=BuoyantObject(self.num_envs, self.water_density, self.gravity, self.box_width/2, self.box_large/2)
         self.thrusters_dynamics=DynamicsFirstOrder(self.timeConstant, self.num_envs)
-        self.hydrodynamics=HydrodynamicsObject(self.num_envs, torch.tensor([5.0, 5.0, 0.002]))
+        self.hydrodynamics=HydrodynamicsObject(self.num_envs, self.drag_coefficients, self.linear_damping, self.quadratic_damping, self.linear_damping_forward_speed, self.offset_linear_damping, self.offset_lin_forward_damping_speed, self.offset_nonlin_damping, self.scaling_damping, self.offset_added_mass, self.scaling_added_mass )
 
     def get_box(self):
     
@@ -198,7 +207,7 @@ class BuoyancyTask(RLTask):
         
         self.stop_boat+=1
 
-        self.drag[:,:]=self.hydrodynamics.compute_drag(box_velocities[:,:])
+        #self.drag[:,:]=self.hydrodynamics.compute_drag(box_velocities[:,:])
 
     
                    

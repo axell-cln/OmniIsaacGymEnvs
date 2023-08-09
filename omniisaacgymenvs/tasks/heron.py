@@ -6,7 +6,7 @@ from omni.isaac.core.prims import GeometryPrimView
 from omni.isaac.core.utils.rotations import quat_to_euler_angles
 from omni.isaac.core.objects import VisualCuboid
 from omni.isaac.core.prims import RigidPrimView
-from omniisaacgymenvs.envs.buoyancy.Buoyancy_physics import BuoyantObject
+from omniisaacgymenvs.envs.BuoyancyPhysics.Buoyancy_physics import BuoyantObject
 
 import numpy as np
 import torch

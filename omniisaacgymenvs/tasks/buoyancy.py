@@ -64,11 +64,11 @@ class BuoyancyTask(RLTask):
         self.boxes_initial_pos = torch.zeros((self._num_envs, 3), device=self._device, dtype=torch.float32)
         self.boxes_initial_rot = torch.zeros((self._num_envs, 4), device=self._device, dtype=torch.float32)
         self.boxes_initial_pos[:, 2] = self.box_high/2
-        self.boxes_initial_rot[:,0]=1.0
-        self.boxes_initial_rot[:,2]=0.45
+        self.boxes_initial_rot[:,0]=0.924
+        self.boxes_initial_rot[:,2]=0.383
         
         #drag constants
-        self.drag_coefficients = torch.tensor([5.0, 5.0, 0.002])
+        self.squared_drag_coefficients = self._task_cfg["dynamics"]["damping"]["squared_drag_coefficients"]
         self.linear_damping = self._task_cfg["dynamics"]["damping"]["linear_damping"]
         self.quadratic_damping = self._task_cfg["dynamics"]["damping"]["quadratic_damping"]
         self.linear_damping_forward_speed = self._task_cfg["dynamics"]["damping"]["linear_damping_forward_speed"]
@@ -108,11 +108,10 @@ class BuoyancyTask(RLTask):
 
         self.buoyancy_physics=BuoyantObject(self.num_envs, self.water_density, self.gravity, self.box_width/2, self.box_large/2)
         self.thrusters_dynamics=DynamicsFirstOrder(self.timeConstant, self.num_envs)
-        self.hydrodynamics=HydrodynamicsObject(self.num_envs, self.drag_coefficients, self.linear_damping, self.quadratic_damping, self.linear_damping_forward_speed, self.offset_linear_damping, self.offset_lin_forward_damping_speed, self.offset_nonlin_damping, self.scaling_damping, self.offset_added_mass, self.scaling_added_mass )
+        self.hydrodynamics=HydrodynamicsObject(self.num_envs, self.squared_drag_coefficients, self.linear_damping, self.quadratic_damping, self.linear_damping_forward_speed, self.offset_linear_damping, self.offset_lin_forward_damping_speed, self.offset_nonlin_damping, self.scaling_damping, self.offset_added_mass, self.scaling_added_mass )
 
     def get_box(self):
     
-
         box_usd_path="/home/axelcoulon/projects/assets/box_thrusters.usd"
         box_prim_path=self.default_zero_env_path + "/box"
         add_reference_to_stage(prim_path=box_prim_path, usd_path=box_usd_path, prim_type="Xform")
@@ -179,23 +178,20 @@ class BuoyancyTask(RLTask):
         actions = actions.clone().to(self._device)
         indices = torch.arange(self._boxes.count, dtype=torch.int64, device=self._device)
         
-        #local or global ? 
         box_poses, box_quaternions = self._boxes.get_world_poses(clone=False)
         box_velocities = self._boxes.get_velocities(clone=False)
 
         angles = self.get_euler_angles(box_quaternions) #rpy roll pitch yaws
 
-
         #body underwater
         self.high_submerged[:]=torch.clamp(self.half_box_size-box_poses[:,2], 0, self.box_high)
         self.submerged_volume[:]= torch.clamp(self.high_submerged * self.box_width * self.box_large, 0, self.box_volume)
-        self.archimedes[:,:]=self.buoyancy_physics.compute_archimedes(self.water_density, self.submerged_volume, -self.gravity)
-        #self.archimedes[:,:]=self.buoyancy_physics.compute_archimedes_metacentric(self.water_density, self.submerged_volume, -self.gravity, angles, self.box_width/2, self.box_large/2)
-        #self.stable_torque[:,:]=self.buoyancy_physics.stabilize_boat(angles)
-
-        print(self.archimedes)
         
-        ##some tests for the thrusters
+        
+        self.archimedes[:,:3], self.archimedes[:,3:]=self.buoyancy_physics.compute_archimedes_metacentric_local(self.submerged_volume, angles, box_quaternions)
+       
+        
+        """  ##some tests for the thrusters
         if self.stop_boat < 400 :
             self.thrusters[:,:]=self.thrusters_dynamics.command_to_thrusters_force(0.0, 0.0)
         
@@ -205,18 +201,21 @@ class BuoyancyTask(RLTask):
         if self.stop_boat > 700 :
             self.thrusters[:,:]=self.thrusters_dynamics.command_to_thrusters_force(0.0, 0.0)
         
-        self.stop_boat+=1
+        self.stop_boat+=1 """
 
-        #self.drag[:,:]=self.hydrodynamics.compute_drag(box_velocities[:,:])
 
-    
+        print("archimedes applied: ", self.archimedes[0,:])
+        print("world pose: ", box_poses[0,:])
+
                    
         #forces_applied_on_center= self.archimedes[:,:3] + self.drag[:,:3]
-        forces_applied_on_center= self.archimedes + self.drag[:,:3]
+        #forces_applied_on_center= self.archimedes + self.drag[:,:3]
         #self._boxes.apply_forces_and_torques_at_pos(forces=forces_applied_on_center, torques=self.drag[:,3:] + self.archimedes[:,3:])
-        self._boxes.apply_forces_and_torques_at_pos(forces=forces_applied_on_center, torques=self.drag[:,3:] + self.stable_torque)
-        self._thrusters_left.apply_forces_and_torques_at_pos(self.thrusters[:,:3], positions=self.left_thruster_position, is_global=False)
-        self._thrusters_right.apply_forces_and_torques_at_pos(self.thrusters[:,3:], positions=self.right_thruster_position, is_global=False)
+        self._boxes.apply_forces_and_torques_at_pos(forces=-self.archimedes[:,:3], torques= -self.archimedes[:,3:], positions=torch.tensor([0.0,0.0,0.0]), is_global=False)
+        #self._thrusters_left.apply_forces_and_torques_at_pos(self.thrusters[:,:3], positions=self.left_thruster_position, is_global=False)
+        #self._thrusters_right.apply_forces_and_torques_at_pos(self.thrusters[:,3:], positions=self.right_thruster_position, is_global=False)
+        #self.drag[:,:]=self.hydrodynamics.compute_drag(box_velocities[:,:])
+
 
         """Printing debugging"""
         #print("forces_applied_on_center: ", forces_applied_on_center[0,:])

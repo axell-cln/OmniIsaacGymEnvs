@@ -55,7 +55,7 @@ class BuoyantObject:
         #get rotation matrix from quaternions in world frame, size is (3*num_envs, 3)
         R= pytorch3d.transforms.quaternion_to_matrix(quaternions)
 
-        print("R:", R[0,:,:])
+        #print("R:", R[0,:,:])
         
         # Arobot = Rworld * Aworld. Resulting matrix should be size (3*num_envs, 3) * (num_envs,3) =(num_envs,3)
         self.archimedes_force_local = torch.bmm(R,torch.unsqueeze(self.archimedes_force_global, 1).mT) #add batch dimension to tensor and transpose it

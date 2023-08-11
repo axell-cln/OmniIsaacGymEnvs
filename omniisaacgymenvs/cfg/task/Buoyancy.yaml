@@ -16,6 +16,7 @@ dynamics:
     timeConstant: 0.05
   
   damping:
+    squared_drag_coefficients: [5.0, 5.0, 0.002]
     linear_damping: [-16.44998712, -15.79776044, -100,-13,-13, -6]
     quadratic_damping: [-2.942, -2.7617212, -10, -5, -5, -5]
     linear_damping_forward_speed: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]

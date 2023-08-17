@@ -196,17 +196,17 @@ class BuoyancyTask(RLTask):
         backward= - forward
 
         if self.thruster_debugging_counter < 200 :
-            self.thrusters[:,:]=self.thrusters_dynamics.command_to_thrusters_force(forward)
+            self.thrusters[:,:]=self.thrusters_dynamics.command_to_thrusters_force(stop)
         
         if self.thruster_debugging_counter > 200 and self.thruster_debugging_counter < 600 :
-            self.thrusters[:,:]=self.thrusters_dynamics.command_to_thrusters_force(turn)
+            self.thrusters[:,:]=self.thrusters_dynamics.command_to_thrusters_force(stop)
         
         if self.thruster_debugging_counter > 600 :
-            self.thrusters[:,:]=self.thrusters_dynamics.command_to_thrusters_force(backward)
+            self.thrusters[:,:]=self.thrusters_dynamics.command_to_thrusters_force(stop)
         
         self.thruster_debugging_counter+=1
 
-        ###apply all the forces                       
+        ###apply all the forces put them in local function apply_forces                    
         self._boxes.apply_forces_and_torques_at_pos(forces=self.archimedes[:,:3] + self.drag[:,:3] , torques=self.archimedes[:,3:] + self.drag[:,3:], is_global=False)
         self._thrusters_left.apply_forces_and_torques_at_pos(self.thrusters[:,:3],positions=self.left_thruster_position,  is_global=False)
         self._thrusters_right.apply_forces_and_torques_at_pos(self.thrusters[:,3:], positions= self.right_thruster_position, is_global=False)
@@ -220,12 +220,11 @@ class BuoyancyTask(RLTask):
         print("")
 
 
-    """ def propagate_forces(self):
-                           
-        forces_applied_on_center= self.archimedes + self.drag[:,:3]
-        self._boxes.apply_forces_and_torques_at_pos(forces=forces_applied_on_center, torques=self.drag[:,3:] + self.stable_torque)
-        self._thrusters_left.apply_forces_and_torques_at_pos(self.thrusters[:,:3], positions=self.left_thruster_position, is_global=False)
-        self._thrusters_right.apply_forces_and_torques_at_pos(self.thrusters[:,3:], positions=self.right_thruster_position, is_global=False) """
+    def propagate_forces(self):
+
+        self._boxes.apply_forces_and_torques_at_pos(forces=self.archimedes[:,:3] + self.drag[:,:3] , torques=self.archimedes[:,3:] + self.drag[:,3:], is_global=False)
+        self._thrusters_left.apply_forces_and_torques_at_pos(self.thrusters[:,:3],positions=self.left_thruster_position,  is_global=False)
+        self._thrusters_right.apply_forces_and_torques_at_pos(self.thrusters[:,3:], positions= self.right_thruster_position, is_global=False)
     
     
     def post_reset(self):

@@ -11,6 +11,7 @@ class HydrodynamicsObject:
             self.drag=torch.zeros((self._num_envs, 6), dtype=torch.float32, device=self.device)
 
             #damping parameters
+            #remove eye
             self.drag_coefficients = torch.tensor([drag_coefficients], device=self.device)
             self.linear_damping=torch.eye(6, device=self.device) @ torch.tensor(linear_damping, device=self.device)
             self.quadratic_damping=torch.eye(6, device=self.device) @ torch.tensor(quadratic_damping, device=self.device)
@@ -56,8 +57,7 @@ class HydrodynamicsObject:
         local_ang_velocities = getLocalAngularVelocities(boat_velocities[:,3:], rot_mat_inv)
 
         #check if this is good
-        print(self.drag_coefficients.mT)
-        print(local_lin_velocities.mT)
+       
         self.drag[:,:3]= - (self.drag_coefficients[:,:3].mT * torch.abs(local_lin_velocities).mT * local_lin_velocities.mT).mT
         self.drag[:, 3:]= - (self.drag_coefficients[:,3:].mT * torch.abs(local_ang_velocities).mT * local_ang_velocities.mT).mT
 

@@ -237,8 +237,8 @@ class RLTask(BaseTask):
         """
         pass
     
-    """ def propagate_forces(self):
-        pass """
+    def propagate_forces(self):
+        pass
     
     def post_physics_step(self):
         """ Processes RL required computations for observations, states, rewards, resets, and extras.

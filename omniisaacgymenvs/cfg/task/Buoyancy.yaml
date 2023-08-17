@@ -9,7 +9,7 @@ env:
   envSpacing: 3
   episodeLength_s: 400
   enableDebugVis: False
-  #controlFrequencyInv: 2    #10 doest not work well  #unity in ms
+  controlFrequencyInv: 10    #10 doest not work well  #unity in ms
   
 buoy:
   material_density: 133
@@ -34,7 +34,7 @@ dynamics:
       pos_cmd_coeff: [-197.800699, 334.050699, -97.6197902, 7.59341259, -0.0301846154]
   
   damping:
-    squared_drag_coefficients: [4.0, 4.0, 0.003, 4.0, 4.0 , 0.003]
+    squared_drag_coefficients: [4.0, 4.0, 100, 4.0, 4.0 , 0.003]
     linear_damping: [-16.44998712, -15.79776044, -100,-13,-13, -6]
     quadratic_damping: [-2.942, -2.7617212, -10, -5, -5, -5]
     linear_damping_forward_speed: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]

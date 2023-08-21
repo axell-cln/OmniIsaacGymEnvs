@@ -1,5 +1,4 @@
 import torch
-import pytorch3d.transforms
 from omniisaacgymenvs.envs.BuoyancyPhysics.Utils import *
 
 class HydrodynamicsObject:
@@ -11,15 +10,14 @@ class HydrodynamicsObject:
             self.drag=torch.zeros((self._num_envs, 6), dtype=torch.float32, device=self.device)
 
             #damping parameters
-            #remove eye
-            self.drag_coefficients = torch.tensor([drag_coefficients], device=self.device)
-            self.linear_damping=torch.eye(6, device=self.device) @ torch.tensor(linear_damping, device=self.device)
-            self.quadratic_damping=torch.eye(6, device=self.device) @ torch.tensor(quadratic_damping, device=self.device)
-            self.linear_damping_forward_speed = torch.eye(6, device=self.device) @ torch.tensor(linear_damping_forward_speed, device=self.device)
-            self.offset_linear_damping = torch.tensor(offset_linear_damping, device=self.device)
-            self.offset_lin_forward_damping_speed = torch.tensor(offset_lin_forward_damping_speed, device=self.device)
-            self.offset_nonlin_damping = torch.tensor(offset_nonlin_damping, device=self.device)
-            self.scaling_damping = torch.tensor(scaling_damping, device=self.device)
+            self.drag_coefficients = torch.tensor([drag_coefficients], device=self.device) #1*6 
+            self.linear_damping=torch.tensor([linear_damping], device=self.device) #1*6
+            self.quadratic_damping= torch.tensor([quadratic_damping], device=self.device) #1*6
+            self.linear_damping_forward_speed = torch.tensor(linear_damping_forward_speed, device=self.device)
+            self.offset_linear_damping = offset_linear_damping
+            self.offset_lin_forward_damping_speed = offset_lin_forward_damping_speed
+            self.offset_nonlin_damping = offset_nonlin_damping
+            self.scaling_damping = scaling_damping
 
             #coriolis
             self._Ca = torch.zeros([6,6], device=self.device) 
@@ -50,13 +48,11 @@ class HydrodynamicsObject:
 
         for our boxes, A ~ 0.2 , ρ ~ 1000, Cd ~ 0.05 """
 
-        rot_mat = pytorch3d.transforms.quaternion_to_matrix(quaternions)
+        rot_mat = getWorldToLocalRotationMatrix(quaternions)
         rot_mat_inv = rot_mat.mT
         
         local_lin_velocities = getLocalLinearVelocities(boat_velocities[:,:3], rot_mat_inv)
         local_ang_velocities = getLocalAngularVelocities(boat_velocities[:,3:], rot_mat_inv)
-
-        #check if this is good
        
         self.drag[:,:3]= - (self.drag_coefficients[:,:3].mT * torch.abs(local_lin_velocities).mT * local_lin_velocities.mT).mT
         self.drag[:, 3:]= - (self.drag_coefficients[:,3:].mT * torch.abs(local_ang_velocities).mT * local_ang_velocities.mT).mT
@@ -72,17 +68,12 @@ class HydrodynamicsObject:
         // matrix Drb
         """
 
-        self.drag[:,:] =  -1 * (self.linear_damping+ self.offset_linear_damping) 
-        - vel[:,:] * (self.linear_damping_forward_speed + self.offset_lin_forward_damping_speed)
-        
-        # Nonlinear damping matrix is considered as a diagonal matrix
-        #adding both matrices 
+        lin_damp =  (self.linear_damping+ self.offset_linear_damping - (self.linear_damping_forward_speed + self.offset_lin_forward_damping_speed))        
 
-        self.drag[:,:] += -1 * (self.quadratic_damping + self.offset_nonlin_damping )* torch.abs(vel)
-        
-        # scaling 
-        self.drag[:,:] = self.drag[:,:]*self.scaling_damping
+        quad_damp =  ((self.quadratic_damping + self.offset_nonlin_damping).mT * torch.abs(vel.mT)).mT
 
+        # scaling and adding both matrices 
+        self.drag[:,:] = (lin_damp + quad_damp) * self.scaling_damping
         return self.drag
     
 
@@ -134,7 +125,7 @@ class HydrodynamicsObject:
         return torch.tensor(self.scaling_added_mass * (self.added_mass + self.offset_added_mass * torch.eye(6)), device=self.device) """
     
     def ComputeHydrodynamicsEffects(self, time, quaternions, world_vel):
-         
+
         rot_mat = pytorch3d.transforms.quaternion_to_matrix(quaternions)
         rot_mat_inv = rot_mat.mT
         
@@ -143,7 +134,7 @@ class HydrodynamicsObject:
 
         self.local_velocities= torch.hstack([self.local_lin_velocities, self.local_ang_velocities])
        
-        print(self.local_velocities)
+        print("local velocities: ", self.local_velocities[0,:])
         # Update added Coriolis matrix
         #self.ComputeAddedCoriolisMatrix(self.local_velocities)
         # Update damping matrix
@@ -165,7 +156,7 @@ class HydrodynamicsObject:
         
         #cor and added should be zero from now
         
-        print("damping: ", damping)
+        #print("damping: ", damping)
         #print("added: ", reshaped_added_tensor)
         #print("cor: ", cor)
 

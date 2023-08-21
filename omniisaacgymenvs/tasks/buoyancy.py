@@ -89,15 +89,16 @@ class BuoyancyTask(RLTask):
         self.boxes_initial_pos = torch.zeros((self._num_envs, 3), device=self._device, dtype=torch.float32)
         self.boxes_initial_rot = torch.zeros((self._num_envs, 4), device=self._device, dtype=torch.float32)
         self.boxes_initial_pos[:, 2] = self.box_high/2
-        self.boxes_initial_rot[:,0]=0.924      # y 45° rotation : 0.924
-        self.boxes_initial_rot[:,2]=0.383      # y 45° rotation : 0.383
-        self.boxes_initial_rot[:,1]=0.383
+        self.boxes_initial_rot[:,0]=1.0     # y 45° rotation : 0.924
+        self.boxes_initial_rot[:,2]=0.0      # y 45° rotation : 0.383
+        self.boxes_initial_rot[:,1]=0.0
 
 
         #volume submerged
         self.high_submerged=torch.zeros((self._num_envs), device=self._device, dtype=torch.float32)
         self.submerged_volume=torch.zeros((self._num_envs), device=self._device, dtype=torch.float32)
-
+        #self.left_thrusters_submerged=torch.zeros((self._num_envs), device=self._device, dtype=torch.float32)
+        #self.right_thrusters_submerged=torch.zeros((self._num_envs), device=self._device, dtype=torch.float32)
         #forces to be applied
         self.archimedes=torch.zeros((self._num_envs, 6), device=self._device, dtype=torch.float32)
         self.drag=torch.zeros((self._num_envs, 6), device=self._device, dtype=torch.float32)
@@ -173,19 +174,28 @@ class BuoyancyTask(RLTask):
         indices = torch.arange(self._boxes.count, dtype=torch.int64, device=self._device)
         
         box_poses, box_quaternions = self._boxes.get_world_poses(clone=False)
+        left_thrusters_poses,_ = self._thrusters_left.get_world_poses(clone=False)
+        right_thrusters_poses,_ = self._thrusters_right.get_world_poses(clone=False)
+
         box_velocities = self._boxes.get_velocities(clone=False)
 
         angles = self.get_euler_angles(box_quaternions) #rpy roll pitch yaws
 
+        print(self.half_box_size-box_poses[:,2])
+        print(-0.05-left_thrusters_poses[:,2])
         #body underwater
         self.high_submerged[:]=torch.clamp(self.half_box_size-box_poses[:,2], 0, self.box_high)
+        #self.left_thrusters_submerged[:] = torch.clamp(-left_thrusters_poses[:,2], 0, 0.05)
+        #self.right_thrusters_submerged[:] = torch.clamp(-right_thrusters_poses[:,2], 0, 0.05)
         self.submerged_volume[:]= torch.clamp(self.high_submerged * self.box_width * self.box_large, 0, self.box_volume)
-        
-        
+        self.box_is_under_water = torch.where(self.high_submerged[:] > 0,1.0,0.0 ).unsqueeze(0)
+        #self.left_thrusters_are_under_water = torch.where(self.left_thrusters_submerged > 0,1.0,0.0 ).unsqueeze(0)
+        #self.right_thrusters_are_under_water = torch.where( self.right_thrusters_submerged > 0,1.0,0.0 ).unsqueeze(0)
+
             ###archimedes
-        self.archimedes[:,:3], self.archimedes[:,3:]=self.buoyancy_physics.compute_archimedes_metacentric_local(self.submerged_volume, angles, box_quaternions)
+        self.archimedes[:,:]=self.buoyancy_physics.compute_archimedes_metacentric_local(self.submerged_volume, angles, box_quaternions) * self.box_is_under_water[:,:].mT
             ###drag
-        self.drag[:,:]=self.hydrodynamics.compute_squared_drag(box_velocities[:,:], box_quaternions)
+        self.drag[:,:]=self.hydrodynamics.ComputeHydrodynamicsEffects(0.01, box_quaternions, box_velocities[:,:]) * self.box_is_under_water[:,:].mT
             ###thrusters
     
         ##some tests for the thrusters
@@ -196,13 +206,15 @@ class BuoyancyTask(RLTask):
         backward= - forward
 
         if self.thruster_debugging_counter < 200 :
-            self.thrusters[:,:]=self.thrusters_dynamics.command_to_thrusters_force(stop)
+            self.thrusters[:,:]=self.thrusters_dynamics.command_to_thrusters_force(forward) 
         
         if self.thruster_debugging_counter > 200 and self.thruster_debugging_counter < 600 :
-            self.thrusters[:,:]=self.thrusters_dynamics.command_to_thrusters_force(stop)
+            self.thrusters[:,:]=self.thrusters_dynamics.command_to_thrusters_force(turn) 
         
         if self.thruster_debugging_counter > 600 :
-            self.thrusters[:,:]=self.thrusters_dynamics.command_to_thrusters_force(stop)
+            self.thrusters[:,:]=self.thrusters_dynamics.command_to_thrusters_force(backward) 
+
+        self.thrusters[:,:] *= self.box_is_under_water.mT
         
         self.thruster_debugging_counter+=1
 
@@ -212,8 +224,8 @@ class BuoyancyTask(RLTask):
         self._thrusters_right.apply_forces_and_torques_at_pos(self.thrusters[:,3:], positions= self.right_thruster_position, is_global=False)
 
         """Printing debugging"""
-        print("buoyancy force: ", self.archimedes[0,:3])
-        print("buoyancy torques: ", self.archimedes[0,3:])
+        #print("buoyancy force: ", self.archimedes[0,:3])
+        #print("buoyancy torques: ", self.archimedes[0,3:])
         print("thrusters: ", self.thrusters[0,:])
         print("drag linear: ", self.drag[0,:3])
         print("drag rotations: ", self.drag[0,3:])
@@ -237,7 +249,7 @@ class BuoyancyTask(RLTask):
     def reset_boxes(self, env_ids):
         """reset boxes positions"""
 
-        #num_sets = len(env_ids)
+        num_sets = len(env_ids)
         envs_long = env_ids.long()
 
         # shift the target up so it visually aligns better

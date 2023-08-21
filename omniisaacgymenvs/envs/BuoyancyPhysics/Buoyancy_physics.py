@@ -1,5 +1,5 @@
 import torch
-import pytorch3d.transforms
+from omniisaacgymenvs.envs.BuoyancyPhysics.Utils import *
 
 class BuoyantObject:
     def __init__(self, num_envs, device, water_density, gravity, metacentric_width, metacentric_length ):
@@ -57,7 +57,7 @@ class BuoyantObject:
         self.compute_archimedes_metacentric_global(submerged_volume, rpy)
 
         #get rotation matrix from quaternions in world frame, size is (3*num_envs, 3)
-        R= pytorch3d.transforms.quaternion_to_matrix(quaternions)
+        R= getWorldToLocalRotationMatrix(quaternions)
 
         #print("R:", R[0,:,:])
         
@@ -69,7 +69,7 @@ class BuoyantObject:
         self.archimedes_torque_local = self.archimedes_torque_local.mT.squeeze(1)
 
         #not sure if torque have to be multiply by the rotation matrix also.
-        return self.archimedes_force_local, self.archimedes_torque_global
+        return torch.hstack([self.archimedes_force_local, self.archimedes_torque_global])
     
 
     #alternative of archimedes torque

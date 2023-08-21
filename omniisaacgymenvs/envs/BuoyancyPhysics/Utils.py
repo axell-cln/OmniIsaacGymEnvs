@@ -1,4 +1,9 @@
 import torch
+import pytorch3d.transforms
+
+def getWorldToLocalRotationMatrix(quaternions):
+    rot_mat = pytorch3d.transforms.quaternion_to_matrix(quaternions)
+    return rot_mat
 
 def getLocalLinearVelocities(world_lin_vel, rotWR):
     

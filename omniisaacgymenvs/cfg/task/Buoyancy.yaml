@@ -35,8 +35,8 @@ dynamics:
   
   damping:
     squared_drag_coefficients: [4.0, 4.0, 100, 4.0, 4.0 , 0.003]
-    linear_damping: [-16.44998712, -15.79776044, -100,-13,-13, -6]
-    quadratic_damping: [-2.942, -2.7617212, -10, -5, -5, -5]
+    linear_damping: [16.44998712, 15.79776044, 100, 13, 13, 0.001]
+    quadratic_damping: [2.942, 2.7617212, 10, 5, 5, 0.001]
     linear_damping_forward_speed: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     offset_linear_damping: 0.0
     offset_lin_forward_damping_speed: 0.0
@@ -50,8 +50,8 @@ dynamics:
     last_time: -10.0
 
 box:
-  left_thruster_position: [-0.7, 0.35, 0.0]
-  right_thruster_position: [-0.7, -0.35, 0.0]
+  left_thruster_position: [-0.7, 0.35, -0.05]
+  right_thruster_position: [-0.7, -0.35, -0.05]
 
 sim:
   dt: 0.01       #0.00833  #1/120s

@@ -42,6 +42,10 @@ class BuoyancyTask(RLTask):
         self.water_density=self._task_cfg["buoy"]["water_density"] # kg/m^3
         self.timeConstant = self._task_cfg["dynamics"]["thrusters"]["timeConstant"]
 
+        #buoyancy
+        self.average_buoyancy_force_value = self._task_cfg["dynamics"]["buoyancy"]["average_buoyancy_force_value"]
+        self.amplify_torque = self._task_cfg["dynamics"]["buoyancy"]["amplify_torque"]
+
         #thrusters dynamics
             #interpolation
         self.cmd_lower_range = self._task_cfg["dynamics"]["thrusters"]["cmd_lower_range"]
@@ -89,20 +93,24 @@ class BuoyancyTask(RLTask):
         self.boxes_initial_pos = torch.zeros((self._num_envs, 3), device=self._device, dtype=torch.float32)
         self.boxes_initial_rot = torch.zeros((self._num_envs, 4), device=self._device, dtype=torch.float32)
         self.boxes_initial_pos[:, 2] = self.box_high/2
-        self.boxes_initial_rot[:,0]=1.0     # y 45° rotation : 0.924
-        self.boxes_initial_rot[:,2]=0.0      # y 45° rotation : 0.383
-        self.boxes_initial_rot[:,1]=0.0
+        self.boxes_initial_rot[:,0]=0.924    # y 45° rotation : 0.924
+        self.boxes_initial_rot[:,2]=0.383    # y 45° rotation : 0.383
+        self.boxes_initial_rot[:,1]=0.383
 
 
         #volume submerged
         self.high_submerged=torch.zeros((self._num_envs), device=self._device, dtype=torch.float32)
         self.submerged_volume=torch.zeros((self._num_envs), device=self._device, dtype=torch.float32)
-        #self.left_thrusters_submerged=torch.zeros((self._num_envs), device=self._device, dtype=torch.float32)
-        #self.right_thrusters_submerged=torch.zeros((self._num_envs), device=self._device, dtype=torch.float32)
+
         #forces to be applied
         self.archimedes=torch.zeros((self._num_envs, 6), device=self._device, dtype=torch.float32)
         self.drag=torch.zeros((self._num_envs, 6), device=self._device, dtype=torch.float32)
         self.thrusters=torch.zeros((self._num_envs, 6), device=self._device, dtype=torch.float32)
+
+        #obs variables
+        self.root_pos = torch.zeros((self._num_envs, 3), device=self._device, dtype=torch.float32)
+        self.root_quats = torch.zeros((self._num_envs, 4), device=self._device, dtype=torch.float32)
+        self.root_velocities = torch.zeros((self._num_envs, 6), device=self._device, dtype=torch.float32)
 
         return
 
@@ -124,7 +132,7 @@ class BuoyancyTask(RLTask):
     def get_buoyancy(self):
         """create physics"""
         
-        self.buoyancy_physics=BuoyantObject(self.num_envs, self._device, self.water_density, self.gravity, self.box_width/2, self.box_large/2)
+        self.buoyancy_physics=BuoyantObject(self.num_envs, self._device, self.water_density, self.gravity, self.box_width/2, self.box_large/2, self.average_buoyancy_force_value, self.amplify_torque)
         self.thrusters_dynamics=DynamicsFirstOrder(self.num_envs, self._device, self.timeConstant, self.dt,self.numberOfPointsForInterpolation, self.interpolationPointsFromRealData, self.neg_cmd_coeff, self.pos_cmd_coeff, self.cmd_lower_range, self.cmd_upper_range )
         self.hydrodynamics=HydrodynamicsObject(self.num_envs, self._device, self.squared_drag_coefficients, self.linear_damping, self.quadratic_damping, self.linear_damping_forward_speed, self.offset_linear_damping, self.offset_lin_forward_damping_speed, self.offset_nonlin_damping, self.scaling_damping, self.offset_added_mass, self.scaling_added_mass, self.alpha,self.last_time )
 
@@ -135,14 +143,26 @@ class BuoyancyTask(RLTask):
         box_prim_path=self.default_zero_env_path + "/box"
         add_reference_to_stage(prim_path=box_prim_path, usd_path=box_usd_path, prim_type="Xform")
 
-        
+    
+    def update_state(self) -> None:
+        """
+        Updates the state of the system."""
+
+        # Collects the position and orientation of the platform
+        self.root_pos[:,:], self.root_quats[:,:] = self._boxes.get_world_poses(clone=False)
+        # Collects the velocity of the platform
+        self.root_velocities[:,:] = self._boxes.get_velocities(clone=True)
+               
+        # Dump to state
+        self.current_state = {"position":self.root_pos[:,:3], "orientation":self.root_quats[:,3:], "velocities": self.root_velocities[:,:]}
+
     def get_observations(self) -> dict:
         """will be implemented after physics"""    
 
-        self.root_pos, self.root_rot = self._boxes.get_world_poses(clone=False)
-        
+        self.update_state()
+
         self.obs_buf[..., 0:3] = self.root_pos
-        self.obs_buf[..., 3:7] = self.root_rot
+        self.obs_buf[..., 3:7] = self.root_quats
 
         observations = {
             self._boxes.name: {
@@ -173,29 +193,19 @@ class BuoyancyTask(RLTask):
         actions = actions.clone().to(self._device)
         indices = torch.arange(self._boxes.count, dtype=torch.int64, device=self._device)
         
-        box_poses, box_quaternions = self._boxes.get_world_poses(clone=False)
-        left_thrusters_poses,_ = self._thrusters_left.get_world_poses(clone=False)
-        right_thrusters_poses,_ = self._thrusters_right.get_world_poses(clone=False)
+        self.update_state()
 
-        box_velocities = self._boxes.get_velocities(clone=False)
+        self.euler_angles = self.get_euler_angles(self.root_quats) #rpy roll pitch yaws
 
-        angles = self.get_euler_angles(box_quaternions) #rpy roll pitch yaws
-
-        print(self.half_box_size-box_poses[:,2])
-        print(-0.05-left_thrusters_poses[:,2])
         #body underwater
-        self.high_submerged[:]=torch.clamp(self.half_box_size-box_poses[:,2], 0, self.box_high)
-        #self.left_thrusters_submerged[:] = torch.clamp(-left_thrusters_poses[:,2], 0, 0.05)
-        #self.right_thrusters_submerged[:] = torch.clamp(-right_thrusters_poses[:,2], 0, 0.05)
+        self.high_submerged[:]=torch.clamp(self.half_box_size-self.root_pos[:,2], 0, self.box_high)
         self.submerged_volume[:]= torch.clamp(self.high_submerged * self.box_width * self.box_large, 0, self.box_volume)
         self.box_is_under_water = torch.where(self.high_submerged[:] > 0,1.0,0.0 ).unsqueeze(0)
-        #self.left_thrusters_are_under_water = torch.where(self.left_thrusters_submerged > 0,1.0,0.0 ).unsqueeze(0)
-        #self.right_thrusters_are_under_water = torch.where( self.right_thrusters_submerged > 0,1.0,0.0 ).unsqueeze(0)
-
+        
             ###archimedes
-        self.archimedes[:,:]=self.buoyancy_physics.compute_archimedes_metacentric_local(self.submerged_volume, angles, box_quaternions) * self.box_is_under_water[:,:].mT
+        self.archimedes[:,:]=self.buoyancy_physics.compute_archimedes_metacentric_local(self.submerged_volume, self.euler_angles, self.root_quats) * self.box_is_under_water[:,:].mT
             ###drag
-        self.drag[:,:]=self.hydrodynamics.ComputeHydrodynamicsEffects(0.01, box_quaternions, box_velocities[:,:]) * self.box_is_under_water[:,:].mT
+        self.drag[:,:]=self.hydrodynamics.ComputeHydrodynamicsEffects(0.01, self.root_quats, self.root_velocities[:,:]) * self.box_is_under_water[:,:].mT
             ###thrusters
     
         ##some tests for the thrusters
@@ -218,21 +228,19 @@ class BuoyancyTask(RLTask):
         
         self.thruster_debugging_counter+=1
 
-        ###apply all the forces put them in local function apply_forces                    
-        self._boxes.apply_forces_and_torques_at_pos(forces=self.archimedes[:,:3] + self.drag[:,:3] , torques=self.archimedes[:,3:] + self.drag[:,3:], is_global=False)
-        self._thrusters_left.apply_forces_and_torques_at_pos(self.thrusters[:,:3],positions=self.left_thruster_position,  is_global=False)
-        self._thrusters_right.apply_forces_and_torques_at_pos(self.thrusters[:,3:], positions= self.right_thruster_position, is_global=False)
+        ###apply all the forces 
+        self.apply_forces()
 
         """Printing debugging"""
-        #print("buoyancy force: ", self.archimedes[0,:3])
-        #print("buoyancy torques: ", self.archimedes[0,3:])
+        print("buoyancy force: ", self.archimedes[0,:3])
+        print("buoyancy torques: ", self.archimedes[0,3:])
         print("thrusters: ", self.thrusters[0,:])
         print("drag linear: ", self.drag[0,:3])
         print("drag rotations: ", self.drag[0,3:])
         print("")
 
 
-    def propagate_forces(self):
+    def apply_forces(self):
 
         self._boxes.apply_forces_and_torques_at_pos(forces=self.archimedes[:,:3] + self.drag[:,:3] , torques=self.archimedes[:,3:] + self.drag[:,3:], is_global=False)
         self._thrusters_left.apply_forces_and_torques_at_pos(self.thrusters[:,:3],positions=self.left_thruster_position,  is_global=False)

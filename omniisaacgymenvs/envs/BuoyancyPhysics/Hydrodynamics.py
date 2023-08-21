@@ -21,7 +21,7 @@ class HydrodynamicsObject:
 
             #coriolis
             self._Ca = torch.zeros([6,6], device=self.device) 
-            self.added_mass = torch.zeros([6,6], device=self.device)
+            self.added_mass = torch.zeros([num_envs,6], device=self.device)
             self.offset_added_mass = offset_added_mass
             self.scaling_added_mass=scaling_added_mass
 
@@ -76,27 +76,33 @@ class HydrodynamicsObject:
         self.drag[:,:] = (lin_damp + quad_damp) * self.scaling_damping
         return self.drag
     
+    """ 
+    def GetAddedMass(self):
+        print(torch.tensor(self.scaling_added_mass * (self.added_mass + self.offset_added_mass), device=self.device))
+        return torch.tensor(self.scaling_added_mass * (self.added_mass + self.offset_added_mass), device=self.device)
+    
 
-    """ def ComputeAddedCoriolisMatrix(self, vel):
-        
+    #negligeable in our case
+    def ComputeAddedCoriolisMatrix(self, vel):
+
         // This corresponds to eq. 6.43 on p. 120 in
         // Fossen, Thor, "Handbook of Marine Craft and Hydrodynamics and Motion
-        // Control", 2011
+        // Control", 2011  
         
         ##all is zero for now 
 
-        ab = torch.matmul(self.GetAddedMass(), vel.mT).mT
-        print(torch.transpose(ab[:,:3],0,1))
+        ab = torch.matmul(self.GetAddedMass().mT, vel).mT  #num envs * 6
         Sa = -1 * torch.cross(torch.zeros([self._num_envs,6],device=self.device),torch.transpose(ab[:,:3],0,1), dim=1)
         self._Ca[-3:,:3] = Sa
         self._Ca[:3,-3:] = Sa
-        self._Ca[-3:,-3:] = -1 * torch.cross(torch.zeros([3,self._num_envs]),ab[:,-3:].mT, dim=1)
+        self._Ca[-3:,-3:] = -1 * torch.cross(torch.zeros([3,self._num_envs]),ab[:,-3:].mT, dim=1) 
         
-        return """
+        return 
     
-    """ def ComputeAcc(self, velRel, time, alpha):
-        #Compute Fossen's nu-dot numerically. This is mandatory as Isaac does
-        #not report accelerations
+    
+    def ComputeAcc(self, velRel, time, alpha):
+    #Compute Fossen's nu-dot numerically. This is mandatory as Isaac does
+    #not report accelerations
 
         if self._last_time < 0:
             self._last_time = time
@@ -121,8 +127,7 @@ class HydrodynamicsObject:
         self._last_time = time
         self._last_vel_rel = velRel.copy()
 
-    def GetAddedMass(self):
-        return torch.tensor(self.scaling_added_mass * (self.added_mass + self.offset_added_mass * torch.eye(6)), device=self.device) """
+        """
     
     def ComputeHydrodynamicsEffects(self, time, quaternions, world_vel):
 
@@ -134,7 +139,6 @@ class HydrodynamicsObject:
 
         self.local_velocities= torch.hstack([self.local_lin_velocities, self.local_ang_velocities])
        
-        print("local velocities: ", self.local_velocities[0,:])
         # Update added Coriolis matrix
         #self.ComputeAddedCoriolisMatrix(self.local_velocities)
         # Update damping matrix

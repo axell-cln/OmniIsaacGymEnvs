@@ -9,7 +9,7 @@ env:
   envSpacing: 3
   episodeLength_s: 400
   enableDebugVis: False
-  #controlFrequencyInv: 10    #10 doest not work well  #unity in ms
+  controlFrequencyInv: 2    #10 doest not work well  #unity in ms
   
 buoy:
   material_density: 133
@@ -44,6 +44,10 @@ dynamics:
     scaling_damping: 1.0
     offset_added_mass: 0.0
     scaling_added_mass: 1.0
+
+  buoyancy:
+    average_buoyancy_force_value: 10
+    amplify_torque: 20
 
   acceleration:
     alpha: 0.3

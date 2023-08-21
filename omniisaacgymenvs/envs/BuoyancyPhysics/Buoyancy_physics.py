@@ -2,7 +2,7 @@ import torch
 from omniisaacgymenvs.envs.BuoyancyPhysics.Utils import *
 
 class BuoyantObject:
-    def __init__(self, num_envs, device, water_density, gravity, metacentric_width, metacentric_length ):
+    def __init__(self, num_envs, device, water_density, gravity, metacentric_width, metacentric_length, average_buoyancy_force_value, amplify_torque):
             
             self._num_envs = num_envs
             self.device=device
@@ -15,6 +15,9 @@ class BuoyantObject:
             self.archimedes_force_local = torch.zeros((self._num_envs, 3), dtype=torch.float32, device=self.device)
             self.archimedes_torque_local = torch.zeros((self._num_envs, 3), dtype=torch.float32, device=self.device)
 
+            #data
+            self.average_buoyancy_force_value = average_buoyancy_force_value
+            self.amplify_torque = amplify_torque
             return
     
     def compute_archimedes_metacentric_global(self, submerged_volume, rpy):
@@ -35,8 +38,8 @@ class BuoyantObject:
         """ self.archimedes_torque_global[:,0] = -1 * self.metacentric_width * (torch.sin(roll) * self.archimedes_force_global[:,2])
         self.archimedes_torque_global[:,1] = -1 * self.metacentric_length * (torch.sin(pitch) *  self.archimedes_force_global[:,2]) """
 
-        self.archimedes_torque_global[:,0] = -1 * self.metacentric_width * (torch.sin(roll) * 10)  # cannot multiply by the buoyancy force in isaac sim because of the simulation rate (low then high value)
-        self.archimedes_torque_global[:,1] = -1 * self.metacentric_length * (torch.sin(pitch) *  10)
+        self.archimedes_torque_global[:,0] = -1 * self.metacentric_width * (torch.sin(roll) * self.average_buoyancy_force_value)  # cannot multiply by the buoyancy force in isaac sim because of the simulation rate (low then high value)
+        self.archimedes_torque_global[:,1] = -1 * self.metacentric_length * (torch.sin(pitch) *  self.average_buoyancy_force_value)
         
         #debugging
         #print("self.archimedes_force global: ", self.archimedes_force_global[0,:])
@@ -65,11 +68,13 @@ class BuoyantObject:
         self.archimedes_force_local = torch.bmm(R.mT,torch.unsqueeze(self.archimedes_force_global, 1).mT) #add batch dimension to tensor and transpose it
         self.archimedes_force_local = self.archimedes_force_local.mT.squeeze(1) #remove batch dimension to tensor
 
-        self.archimedes_torque_local = torch.bmm(R.mT,torch.unsqueeze(self.archimedes_torque_global, 1).mT)
-        self.archimedes_torque_local = self.archimedes_torque_local.mT.squeeze(1)
-
+        """ self.archimedes_torque_local = torch.bmm(R.mT,torch.unsqueeze(self.archimedes_torque_global, 1).mT)
+        self.archimedes_torque_local = self.archimedes_torque_local.mT.squeeze(1) """
+        
         #not sure if torque have to be multiply by the rotation matrix also.
-        return torch.hstack([self.archimedes_force_local, self.archimedes_torque_global])
+        self.archimedes_torque_local = self.archimedes_torque_global
+        
+        return torch.hstack([self.archimedes_force_local, self.archimedes_torque_local*self.amplify_torque])
     
 
     #alternative of archimedes torque

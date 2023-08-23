@@ -9,7 +9,7 @@ env:
   envSpacing: 3
   episodeLength_s: 400
   enableDebugVis: False
-  controlFrequencyInv: 2    #10 doest not work well  #unity in ms
+  controlFrequencyInv: 10  # dt * dtcontrol seconds
   
 buoy:
   material_density: 133

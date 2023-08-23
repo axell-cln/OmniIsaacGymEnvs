@@ -34,6 +34,9 @@ class DynamicsFirstOrder(Dynamics):
         self.commands = torch.linspace(cmd_lower_range, cmd_upper_range, steps=len(interpolationPointsFromRealData), device=self.device)
         self.numberOfPointsForInterpolation = numberOfPointsForInterpolation
         self.interpolationPointsFromRealData = torch.tensor(interpolationPointsFromRealData, device=self.device)
+
+        #forces
+        self.thruster_forces_before_dynamics = torch.zeros((self.num_envs, 2), dtype=torch.float32, device=self.device)
         
         #lsm
         self.coeff_neg_commands=torch.tensor(coeff_neg_commands, device=self.device)
@@ -80,24 +83,22 @@ class DynamicsFirstOrder(Dynamics):
         #cmd_value is size (num_envs,2)
         self.idx_matrix = torch.round(((cmd_value + 1) * self.n/2)).to(torch.long)
         
-        interpolated_values = self.y_linear_interp[self.idx_matrix]
+        self.thruster_forces_before_dynamics = self.y_linear_interp[self.idx_matrix]
 
-        #debugging
-        #print("interpolated_values: ", interpolated_values)
 
-        return interpolated_values
-
-    def command_to_thrusters_force(self, commands):
+    def set_target_force(self, commands):  
         """this function get commands as entry and provide resulting forces"""
 
         #size (num_envs,2)
-        thruster_forces_before_dynamics = self.get_cmd_interpolated(commands)
+        self.get_cmd_interpolated(commands)  #every action step
+    
+        
+    def update_forces(self):
 
         #size (num_envs,2)
-        self.thrusters[:,[0,3]] = self.update(thruster_forces_before_dynamics, self.dt)
-        
-        return self.thrusters
+        self.thrusters[:,[0,3]] = self.update(self.thruster_forces_before_dynamics, self.dt) #every simulation step that tracks the target  update_thrusters_forces
 
+        return self.thrusters
 
 
     """function below has to be change to fit multi robots training"""

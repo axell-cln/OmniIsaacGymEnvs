@@ -112,6 +112,13 @@ class BuoyancyTask(RLTask):
         self.root_quats = torch.zeros((self._num_envs, 4), device=self._device, dtype=torch.float32)
         self.root_velocities = torch.zeros((self._num_envs, 6), device=self._device, dtype=torch.float32)
 
+        ##some tests for the thrusters
+
+        self.stop = torch.tensor([0.0, 0.0], device=self._device)
+        self.turn = torch.tensor([-1.0, 0.5], device=self._device)
+        self.forward = torch.tensor([1.0, 1.0], device=self._device)
+        self.backward= - self.forward
+
         return
 
     def set_up_scene(self, scene) -> None:
@@ -152,7 +159,15 @@ class BuoyancyTask(RLTask):
         self.root_pos[:,:], self.root_quats[:,:] = self._boxes.get_world_poses(clone=False)
         # Collects the velocity of the platform
         self.root_velocities[:,:] = self._boxes.get_velocities(clone=True)
-               
+
+        #get euler angles       
+        self.euler_angles = self.get_euler_angles(self.root_quats) #rpy roll pitch yaws
+
+        #body underwater
+        self.high_submerged[:]=torch.clamp(self.half_box_size-self.root_pos[:,2], 0, self.box_high)
+        self.submerged_volume[:]= torch.clamp(self.high_submerged * self.box_width * self.box_large, 0, self.box_volume)
+        self.box_is_under_water = torch.where(self.high_submerged[:] > 0,1.0,0.0 ).unsqueeze(0)
+
         # Dump to state
         self.current_state = {"position":self.root_pos[:,:3], "orientation":self.root_quats[:,3:], "velocities": self.root_velocities[:,:]}
 
@@ -192,41 +207,17 @@ class BuoyancyTask(RLTask):
 
         actions = actions.clone().to(self._device)
         indices = torch.arange(self._boxes.count, dtype=torch.int64, device=self._device)
-        
-        self.update_state()
 
-        self.euler_angles = self.get_euler_angles(self.root_quats) #rpy roll pitch yaws
-
-        #body underwater
-        self.high_submerged[:]=torch.clamp(self.half_box_size-self.root_pos[:,2], 0, self.box_high)
-        self.submerged_volume[:]= torch.clamp(self.high_submerged * self.box_width * self.box_large, 0, self.box_volume)
-        self.box_is_under_water = torch.where(self.high_submerged[:] > 0,1.0,0.0 ).unsqueeze(0)
-        
-            ###archimedes
-        self.archimedes[:,:]=self.buoyancy_physics.compute_archimedes_metacentric_local(self.submerged_volume, self.euler_angles, self.root_quats) * self.box_is_under_water[:,:].mT
-            ###drag
-        self.drag[:,:]=self.hydrodynamics.ComputeHydrodynamicsEffects(0.01, self.root_quats, self.root_velocities[:,:]) * self.box_is_under_water[:,:].mT
-            ###thrusters
-    
-        ##some tests for the thrusters
-
-        stop = torch.tensor([0.0, 0.0])
-        turn = torch.tensor([-1.0, 0.5])
-        forward = torch.tensor([1.0, 1.0])
-        backward= - forward
+        ###thrusters
 
         if self.thruster_debugging_counter < 200 :
-            self.thrusters[:,:]=self.thrusters_dynamics.command_to_thrusters_force(forward) 
+            self.thrusters_dynamics.set_target_force(self.forward) 
         
         if self.thruster_debugging_counter > 200 and self.thruster_debugging_counter < 600 :
-            self.thrusters[:,:]=self.thrusters_dynamics.command_to_thrusters_force(turn) 
+            self.thrusters_dynamics.set_target_force(self.turn) 
         
         if self.thruster_debugging_counter > 600 :
-            self.thrusters[:,:]=self.thrusters_dynamics.command_to_thrusters_force(backward) 
-
-        self.thrusters[:,:] *= self.box_is_under_water.mT
-        
-        self.thruster_debugging_counter+=1
+            self.thrusters_dynamics.set_target_force(self.backward) 
 
         ###apply all the forces 
         self.apply_forces()
@@ -242,6 +233,17 @@ class BuoyancyTask(RLTask):
 
     def apply_forces(self):
 
+        
+            ###archimedes
+        self.archimedes[:,:]=self.buoyancy_physics.compute_archimedes_metacentric_local(self.submerged_volume, self.euler_angles, self.root_quats) * self.box_is_under_water[:,:].mT
+            ###drag
+        self.drag[:,:]=self.hydrodynamics.ComputeHydrodynamicsEffects(0.01, self.root_quats, self.root_velocities[:,:]) * self.box_is_under_water[:,:].mT
+         
+        self.thrusters[:,:] = self.thrusters_dynamics.update_forces()
+        self.thrusters[:,:] *= self.box_is_under_water.mT
+        
+        self.thruster_debugging_counter+=1
+
         self._boxes.apply_forces_and_torques_at_pos(forces=self.archimedes[:,:3] + self.drag[:,:3] , torques=self.archimedes[:,3:] + self.drag[:,3:], is_global=False)
         self._thrusters_left.apply_forces_and_torques_at_pos(self.thrusters[:,:3],positions=self.left_thruster_position,  is_global=False)
         self._thrusters_right.apply_forces_and_torques_at_pos(self.thrusters[:,3:], positions= self.right_thruster_position, is_global=False)
@@ -253,6 +255,7 @@ class BuoyancyTask(RLTask):
         # randomize all envs
         indices = torch.arange(self._boxes.count, dtype=torch.int64, device=self._device)
         self.reset_idx(indices)
+        self.update_state()
        
     def reset_boxes(self, env_ids):
         """reset boxes positions"""

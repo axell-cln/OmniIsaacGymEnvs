@@ -48,7 +48,7 @@ def initialize_task(config, env, init_sim=True):
     from omniisaacgymenvs.tasks.turtlebot3 import Turtlebot3Task
     from omniisaacgymenvs.tasks.jetbot import JetbotTask
     from omniisaacgymenvs.tasks.heron import HeronTask
-    from omniisaacgymenvs.tasks.buoyancy import BuoyancyTask
+    from omniisaacgymenvs.tasks.buoyancy.buoyancy import BuoyancyTask
     from omniisaacgymenvs.tasks.box import BoxTrainingTask
 
     # Mappings from strings to environments

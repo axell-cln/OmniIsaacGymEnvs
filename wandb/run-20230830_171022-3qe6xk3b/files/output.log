@@ -1,0 +1,35 @@
+self.seed = 42
+ Experiment name: Turtlebot
+Started to train
+Exact experiment name requested from command line: Turtlebot
+Box([ 0. -1.], 1.0, (2,), float32) Box(-inf, inf, (2,), float32)
+current training device: cuda:0
+{'actions_num': 2, 'input_shape': (2,), 'num_seqs': 64, 'value_size': 1, 'normalize_value': True, 'normalize_input': True}
+[]
+True
+build mlp: 2
+RunningMeanStd:  (1,)
+RunningMeanStd:  (2,)
+[2023-08-30 17:10:24] Running RL reset
+Error executing job with overrides: ['task=Turtlebot', 'headless=True', 'enable_livestream=False', 'wandb_activate=True', 'wandb_entity=buoyancy-drl', 'wandb_project=turtlebot']
+Traceback (most recent call last):
+  File "omniisaacgymenvs/scripts/rlgames_train.py", line 136, in parse_hydra_configs
+    rlg_trainer.run()
+  File "omniisaacgymenvs/scripts/rlgames_train.py", line 84, in run
+    'sigma': None
+  File "/home/isaac_user/.local/share/ov/pkg/isaac_sim-2022.2.1/kit/python/lib/python3.7/site-packages/rl_games/torch_runner.py", line 121, in run
+    self.run_train(args)
+  File "/home/isaac_user/.local/share/ov/pkg/isaac_sim-2022.2.1/kit/python/lib/python3.7/site-packages/rl_games/torch_runner.py", line 102, in run_train
+    agent.train()
+  File "/home/isaac_user/.local/share/ov/pkg/isaac_sim-2022.2.1/kit/python/lib/python3.7/site-packages/rl_games/common/a2c_common.py", line 1233, in train
+    self.obs = self.env_reset()
+  File "/home/isaac_user/.local/share/ov/pkg/isaac_sim-2022.2.1/kit/python/lib/python3.7/site-packages/rl_games/common/a2c_common.py", line 514, in env_reset
+    obs = self.vec_env.reset()
+  File "/home/axelcoulon/projects/OmniIsaacGymEnvs/omniisaacgymenvs/utils/rlgames/rlgames_utils.py", line 102, in reset
+    return self.env.reset()
+  File "/home/axelcoulon/projects/OmniIsaacGymEnvs/omniisaacgymenvs/envs/vec_env_rlgames.py", line 74, in reset
+    obs_dict, _, _, _ = self.step(actions)
+  File "/home/axelcoulon/projects/OmniIsaacGymEnvs/omniisaacgymenvs/envs/vec_env_rlgames.py", line 47, in step
+    self._task.update_state()
+AttributeError: 'TurtlebotTask' object has no attribute 'update_state'
+Set the environment variable HYDRA_FULL_ERROR=1 for a complete stack trace.
